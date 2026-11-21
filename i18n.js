@@ -40,6 +40,13 @@ window.I18N = {
     noAccounts: "No accounts yet. Add one to set your starting balance.",
     accountPlaceholder: "e.g. Bank, Revolut, Cash",
     done: "Done",
+    // Settings
+    settings: "Settings",
+    settingsHint: "Data is stored on this device only.",
+    loadSample: "Load sample data",
+    clearAll: "Clear all data",
+    confirmSample: "Replace current data with the sample data?",
+    confirmClear: "Delete all data and start empty? This cannot be undone.",
 
     // Income
     incomeStreams: "Income streams",
@@ -134,6 +141,12 @@ window.I18N = {
     noAccounts: "还没有账户。添加一个以设置初始余额。",
     accountPlaceholder: "例如 银行、Revolut、现金",
     done: "完成",
+    settings: "设置",
+    settingsHint: "数据仅保存在本设备上。",
+    loadSample: "载入示例数据",
+    clearAll: "清除所有数据",
+    confirmSample: "用示例数据替换当前数据？",
+    confirmClear: "删除所有数据并清空？此操作无法撤销。",
 
     incomeStreams: "收入来源",
     potentialIncome: "潜在 / 预期收入",

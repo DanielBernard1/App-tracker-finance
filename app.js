@@ -609,6 +609,50 @@
     render();
   });
 
+  document.getElementById("settings-btn").addEventListener("click", openSettingsModal);
+
+  function openSettingsModal() {
+    const backdrop = el('<div class="modal-backdrop"></div>');
+    const modal = el(`
+      <div class="modal">
+        <h2>${esc(t("settings"))}</h2>
+        <p class="row-sub" style="margin:0 0 16px">${esc(t("settingsHint"))}</p>
+        <button type="button" class="btn ghost block" id="s-sample" style="margin-bottom:10px">${esc(t("loadSample"))}</button>
+        <button type="button" class="btn danger block" id="s-clear" style="margin-bottom:16px">${esc(t("clearAll"))}</button>
+        <div class="modal-actions"><button type="button" class="btn ghost block" id="s-close">${esc(t("done"))}</button></div>
+      </div>`);
+    backdrop.appendChild(modal);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
+
+    modal.querySelector("#s-sample").addEventListener("click", () => {
+      if (!confirm(t("confirmSample"))) return;
+      const lang = state.lang;
+      state = window.Store.seed();
+      state.lang = lang;
+      window.STATE_LANG = lang;
+      persist();
+      closeModal();
+      activeTab = "overview";
+      render();
+    });
+    modal.querySelector("#s-clear").addEventListener("click", () => {
+      if (!confirm(t("confirmClear"))) return;
+      const lang = state.lang;
+      state = structuredClone(window.Store.DEFAULT_STATE);
+      state.seeded = true; // prevent auto-reseed on reload
+      state.lang = lang;
+      window.STATE_LANG = lang;
+      persist();
+      closeModal();
+      activeTab = "overview";
+      render();
+    });
+    modal.querySelector("#s-close").addEventListener("click", closeModal);
+
+    modalRoot.innerHTML = "";
+    modalRoot.appendChild(backdrop);
+  }
+
   // ---------- init ----------
   render();
 })();
