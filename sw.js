@@ -1,11 +1,13 @@
 // Service worker: cache-first offline support for the app shell.
-const CACHE = "finance-tracker-v1";
+const CACHE = "finance-tracker-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./i18n.js",
   "./store.js",
+  "./projection.js",
+  "./chart.js",
   "./app.js",
   "./manifest.webmanifest",
   "./icon-192.png",

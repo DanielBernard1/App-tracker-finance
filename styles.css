@@ -221,3 +221,60 @@ button {
 }
 .tab .tab-ico { font-size: 17px; line-height: 1; }
 .tab.active { color: var(--accent); }
+
+/* ---------- Timeline / chart ---------- */
+.tl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tl-header .kpi { gap: 2px; }
+.tl-header .btn { white-space: nowrap; }
+
+.timeline-card { padding: 0; overflow: hidden; position: relative; }
+.timeline-host { position: relative; }
+
+.timeline-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-left: 46px; /* room for fixed y-axis labels */
+}
+.timeline-svg { display: block; }
+
+.timeline-yaxis {
+  position: absolute;
+  top: 0; left: 0;
+  width: 46px; height: 100%;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--surface) 70%, transparent);
+}
+.timeline-yaxis .y-tick {
+  position: absolute;
+  left: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 2px 4px 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.legend .sw { width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; display: inline-block; }
+.legend .sw-confirmed { border-top-color: var(--accent); }
+.legend .sw-optimistic { border-top-color: var(--accent); opacity: 0.5; border-top-style: dashed; }
+.legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.legend .dot-income { background: var(--pos); }
+.legend .dot-fix { background: var(--neg); }
+.legend .dot-pay { background: var(--warn); }
+.legend .dot-exp { background: var(--accent); opacity: 0.55; }
+
+.event-dot { cursor: pointer; }

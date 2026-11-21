@@ -25,7 +25,7 @@
   <main id="view" class="view"><!-- rendered by app.js --></main>
 
   <nav class="tabbar" id="tabbar">
-    <button class="tab" data-tab="overview"><span class="tab-ico">◆</span><span data-i18n="tabOverview">Overview</span></button>
+    <button class="tab" data-tab="overview"><span class="tab-ico">◆</span><span data-i18n="tabOverview">Timeline</span></button>
     <button class="tab" data-tab="income"><span class="tab-ico">↑</span><span data-i18n="tabIncome">Income</span></button>
     <button class="tab" data-tab="goals"><span class="tab-ico">◎</span><span data-i18n="tabGoals">Goals</span></button>
     <button class="tab" data-tab="expenses"><span class="tab-ico">↓</span><span data-i18n="tabExpenses">Expenses</span></button>
@@ -37,6 +37,8 @@
 
   <script src="i18n.js"></script>
   <script src="store.js"></script>
+  <script src="projection.js"></script>
+  <script src="chart.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

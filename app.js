@@ -2,6 +2,11 @@
   "use strict";
 
   let state = window.Store.load();
+  // Seed sample data on first ever load (empty + never seeded).
+  if (!state.seeded && !state.incomeStreams.length && !state.accounts.length) {
+    state = window.Store.seed();
+    window.Store.save(state);
+  }
   window.STATE_LANG = state.lang;
   let activeTab = "overview";
 
@@ -133,71 +138,131 @@
     return head;
   }
 
-  // ----- Overview -----
+  // ----- Overview = cash-flow timeline -----
   function renderOverview() {
-    const o = overviewTotals();
+    const series = window.Projection.project(state, { horizonDays: 730 });
 
-    const avail = el(`
-      <div class="card">
-        <div class="kpi">
-          <span class="kpi-label">${esc(t("availableNextMonth"))}</span>
-          <span class="kpi-value ${o.available >= 0 ? "pos" : "neg"}">${esc(money(o.available))}</span>
-          <span class="row-sub">${esc(t("availableHint"))}</span>
-        </div>
-      </div>`);
-    view.appendChild(avail);
-
-    const grid = el('<div class="kpi-grid"></div>');
-    grid.appendChild(kpiSmall("monthlyIncome", o.income, "pos"));
-    grid.appendChild(kpiSmall("expectedIncome", o.expected, "pos"));
-    grid.appendChild(kpiSmall("fixCosts", o.fix, "neg"));
-    grid.appendChild(kpiSmall("payLaterDue", o.payLaterDue, "neg"));
-    view.appendChild(grid);
-
-    view.appendChild(el(`<div class="section-title">${esc(t("goalsProgress"))}</div>`));
-    if (!state.goals.length) {
-      view.appendChild(el(`<div class="card"><div class="empty">${esc(t("noGoalsYet"))}</div></div>`));
-    } else {
-      const card = el('<div class="card"></div>');
-      state.goals.forEach((g) => card.appendChild(goalProgressRow(g)));
-      view.appendChild(card);
-    }
-
-    view.appendChild(el(`<div class="section-title">${esc(t("totalExpenses"))}</div>`));
-    view.appendChild(el(`
-      <div class="card">
+    // Header: starting balance + end-of-horizon projection
+    const endConfirmed = series.confirmed[series.confirmed.length - 1];
+    const header = el(`
+      <div class="card tl-header">
         <div class="kpi kpi-sm">
-          <span class="kpi-label">${esc(t("totalExpenses"))}</span>
-          <span class="kpi-value neg">${esc(money(o.totalPurchases))}</span>
-        </div>
-      </div>`));
-  }
-
-  function kpiSmall(labelKey, value, cls) {
-    return el(`
-      <div class="card kpi-sm">
-        <div class="kpi">
-          <span class="kpi-label">${esc(t(labelKey))}</span>
-          <span class="kpi-value ${cls}">${esc(money(value))}</span>
+          <span class="kpi-label">${esc(t("startingBalance"))}</span>
+          <span class="kpi-value">${esc(money(series.startingBalance))}</span>
         </div>
       </div>`);
+    const editAcc = el(`<button class="btn ghost sm">${esc(t("editAccounts"))}</button>`);
+    editAcc.addEventListener("click", openAccountsModal);
+    header.appendChild(editAcc);
+    view.appendChild(header);
+
+    // Chart
+    const chartWrap = el('<div class="card timeline-card"></div>');
+    const chartHost = el('<div class="timeline-host"></div>');
+    chartWrap.appendChild(chartHost);
+    view.appendChild(chartWrap);
+
+    // Render after insertion so clientWidth is known
+    requestAnimationFrame(() => {
+      window.Chart.render(chartHost, series, (v) => money(v), (iso) => fmtDate(iso), state.lang);
+    });
+
+    // Legend
+    view.appendChild(el(`
+      <div class="legend">
+        <span class="lg"><i class="sw sw-confirmed"></i>${esc(t("legConfirmed"))}</span>
+        <span class="lg"><i class="sw sw-optimistic"></i>${esc(t("legOptimistic"))}</span>
+        <span class="lg"><i class="dot dot-income"></i>${esc(t("legIncome"))}</span>
+        <span class="lg"><i class="dot dot-fix"></i>${esc(t("legFix"))}</span>
+        <span class="lg"><i class="dot dot-pay"></i>${esc(t("legPayLater"))}</span>
+        <span class="lg"><i class="dot dot-exp"></i>${esc(t("legExpected"))}</span>
+      </div>`));
+
+    // Quick projection readouts at 1 / 3 / 6 / 12 months
+    const marks = [
+      { d: 30, key: "in1mo" },
+      { d: 90, key: "in3mo" },
+      { d: 180, key: "in6mo" },
+      { d: 365, key: "in12mo" },
+    ];
+    view.appendChild(el(`<div class="section-title">${esc(t("projectedBalance"))}</div>`));
+    const grid = el('<div class="kpi-grid"></div>');
+    marks.forEach((m) => {
+      const c = series.confirmed[m.d] != null ? series.confirmed[m.d] : endConfirmed;
+      grid.appendChild(el(`
+        <div class="card kpi-sm">
+          <div class="kpi">
+            <span class="kpi-label">${esc(t(m.key))}</span>
+            <span class="kpi-value ${c >= 0 ? "pos" : "neg"}">${esc(money(c))}</span>
+          </div>
+        </div>`));
+    });
+    view.appendChild(grid);
   }
 
-  function goalProgressRow(g) {
-    const target = num(g.target);
-    const saved = num(g.saved);
-    const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
-    const done = target > 0 && saved >= target;
-    const row = el('<div style="padding:10px 0;border-bottom:1px solid var(--border)"></div>');
-    row.appendChild(el(`
-      <div class="row" style="padding:0 0 4px;border:none">
-        <div class="row-main"><span class="row-title">${esc(g.name)}</span>
-          <span class="row-sub">${esc(money(saved, g.currency))} / ${esc(money(target, g.currency))} · ${g.deadline ? esc(fmtDate(g.deadline)) : esc(t("noDeadline"))}</span>
+  // ----- Accounts editor (starting balance = sum of accounts) -----
+  function openAccountsModal() {
+    const card = el('<div class="card" style="margin:0 0 12px"></div>');
+    function redraw() {
+      card.innerHTML = "";
+      if (!state.accounts.length) {
+        card.appendChild(el(`<div class="empty">${esc(t("noAccounts"))}</div>`));
+      }
+      state.accounts.forEach((a) => {
+        const row = el(`
+          <div class="row">
+            <div class="row-main">
+              <span class="row-title">${esc(a.name)}</span>
+            </div>
+            <div class="row-right">
+              <span class="row-amount">${esc(money(a.balance, a.currency))}</span>
+              <button class="icon-btn" aria-label="delete">×</button>
+            </div>
+          </div>`);
+        row.querySelector(".icon-btn").addEventListener("click", () => {
+          state.accounts = state.accounts.filter((z) => z.id !== a.id);
+          persist(); redraw();
+        });
+        card.appendChild(row);
+      });
+      const total = state.accounts.reduce((s, a) => s + num(a.balance), 0);
+      card.appendChild(el(`<div class="row" style="border:none"><div class="row-main"><span class="row-sub">${esc(t("startingBalance"))}</span></div><span class="row-amount">${esc(money(total))}</span></div>`));
+    }
+    redraw();
+
+    const addForm = el(`
+      <form id="acc-form">
+        <div class="field-row">
+          <div class="field" style="flex:1.4"><label>${esc(t("accountName"))}</label><input name="name" type="text" placeholder="${esc(t("accountPlaceholder"))}" /></div>
+          <div class="field"><label>${esc(t("balance"))}</label><input name="balance" type="number" inputmode="decimal" step="0.01" placeholder="0.00" /></div>
+          <div class="field" style="flex:0 0 84px"><label>${esc(t("currency"))}</label><select name="currency">${currencyOptions()}</select></div>
         </div>
-        <span class="row-amount ${done ? "pos" : ""}">${pct}%</span>
-      </div>`));
-    row.appendChild(el(`<div class="progress ${done ? "done" : ""}"><span style="width:${pct}%"></span></div>`));
-    return row;
+        <button type="button" class="btn ghost sm block" id="acc-add">+ ${esc(t("addAccount"))}</button>
+      </form>`);
+
+    const backdrop = el('<div class="modal-backdrop"></div>');
+    const modal = el(`<div class="modal"><h2>${esc(t("accounts"))}</h2></div>`);
+    modal.appendChild(card);
+    modal.appendChild(addForm);
+    const actions = el(`<div class="modal-actions"><button type="button" class="btn block" id="acc-done">${esc(t("done"))}</button></div>`);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    backdrop.addEventListener("click", (ev) => { if (ev.target === backdrop) { closeModal(); render(); } });
+
+    addForm.querySelector("#acc-add").addEventListener("click", () => {
+      const f = addForm;
+      const name = f.name.value.trim();
+      const bal = num(f.balance.value);
+      if (!name) return;
+      state.accounts.push({ id: Store.uid(), name, balance: bal, currency: f.currency.value });
+      persist();
+      f.name.value = ""; f.balance.value = "";
+      redraw();
+    });
+    actions.querySelector("#acc-done").addEventListener("click", () => { closeModal(); render(); });
+
+    modalRoot.innerHTML = "";
+    modalRoot.appendChild(backdrop);
   }
 
   // ----- Income -----
