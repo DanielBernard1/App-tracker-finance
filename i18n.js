@@ -1,0 +1,151 @@
+// Simple i18n dictionary: English + Chinese (Simplified)
+window.I18N = {
+  en: {
+    appTitle: "Finance Tracker",
+    tabOverview: "Overview",
+    tabIncome: "Income",
+    tabGoals: "Goals",
+    tabExpenses: "Expenses",
+    tabHistory: "History",
+
+    // Overview
+    availableNextMonth: "Available next month",
+    availableHint: "Income + expected − fix costs − pay later due",
+    monthlyIncome: "Monthly income",
+    expectedIncome: "Expected income",
+    fixCosts: "Fix costs",
+    payLaterDue: "Pay later due",
+    goalsProgress: "Goals progress",
+    noGoalsYet: "No goals yet.",
+    netThisMonth: "Net this month",
+
+    // Income
+    incomeStreams: "Income streams",
+    potentialIncome: "Potential / expected income",
+    addIncomeStream: "Add income stream",
+    addExpected: "Add expected income",
+    noIncomeStreams: "No income streams yet.",
+    noExpected: "No expected income yet.",
+    perMonth: "/mo",
+
+    // Goals
+    monetaryGoals: "Monetary goals",
+    addGoal: "Add goal",
+    noGoals: "No goals yet.",
+    target: "Target",
+    saved: "Saved",
+    deadline: "Deadline",
+    noDeadline: "No deadline",
+    remaining: "remaining",
+    reached: "Reached",
+    perMonthNeeded: "/mo needed",
+
+    // Expenses
+    expenses: "Expenses",
+    addFixCost: "Add fix cost",
+    payLater: "Pay later",
+    addPayLater: "Add pay later",
+    noFixCosts: "No fix costs yet.",
+    noPayLater: "No pay later items yet.",
+    due: "Due",
+    paid: "Paid",
+    markPaid: "Mark paid",
+
+    // History
+    purchaseHistory: "Purchase history",
+    addPurchase: "Add purchase",
+    noPurchases: "No purchases yet.",
+    totalExpenses: "Total expenses",
+
+    // Form fields
+    name: "Name",
+    amount: "Amount",
+    currency: "Currency",
+    category: "Category",
+    date: "Date",
+    dueDate: "Due date",
+    note: "Note",
+    optional: "optional",
+    save: "Save",
+    cancel: "Cancel",
+    delete: "Delete",
+    edit: "Edit",
+    namePlaceholder: "e.g. Dad, SAP, Raku…",
+    goalNamePlaceholder: "e.g. Trip, Emergency fund",
+    purchasePlaceholder: "e.g. Groceries",
+  },
+  zh: {
+    appTitle: "财务记账",
+    tabOverview: "总览",
+    tabIncome: "收入",
+    tabGoals: "目标",
+    tabExpenses: "支出",
+    tabHistory: "记录",
+
+    availableNextMonth: "下月可用",
+    availableHint: "收入 + 预期 − 固定支出 − 待付款",
+    monthlyIncome: "每月收入",
+    expectedIncome: "预期收入",
+    fixCosts: "固定支出",
+    payLaterDue: "待付款",
+    goalsProgress: "目标进度",
+    noGoalsYet: "还没有目标。",
+    netThisMonth: "本月结余",
+
+    incomeStreams: "收入来源",
+    potentialIncome: "潜在 / 预期收入",
+    addIncomeStream: "添加收入来源",
+    addExpected: "添加预期收入",
+    noIncomeStreams: "还没有收入来源。",
+    noExpected: "还没有预期收入。",
+    perMonth: "/月",
+
+    monetaryGoals: "储蓄目标",
+    addGoal: "添加目标",
+    noGoals: "还没有目标。",
+    target: "目标金额",
+    saved: "已存",
+    deadline: "截止日期",
+    noDeadline: "无截止日期",
+    remaining: "还差",
+    reached: "已达成",
+    perMonthNeeded: "/月所需",
+
+    expenses: "支出",
+    addFixCost: "添加固定支出",
+    payLater: "待付款",
+    addPayLater: "添加待付款",
+    noFixCosts: "还没有固定支出。",
+    noPayLater: "还没有待付款项。",
+    due: "到期",
+    paid: "已付",
+    markPaid: "标记已付",
+
+    purchaseHistory: "消费记录",
+    addPurchase: "添加消费",
+    noPurchases: "还没有消费记录。",
+    totalExpenses: "总支出",
+
+    name: "名称",
+    amount: "金额",
+    currency: "货币",
+    category: "类别",
+    date: "日期",
+    dueDate: "到期日",
+    note: "备注",
+    optional: "可选",
+    save: "保存",
+    cancel: "取消",
+    delete: "删除",
+    edit: "编辑",
+    namePlaceholder: "例如 爸爸、SAP、Raku…",
+    goalNamePlaceholder: "例如 旅行、应急基金",
+    purchasePlaceholder: "例如 买菜",
+  },
+};
+
+window.t = function (key) {
+  const lang = window.STATE_LANG || "en";
+  const dict = window.I18N[lang] || window.I18N.en;
+  return dict[key] != null ? dict[key] : (window.I18N.en[key] != null ? window.I18N.en[key] : key);
+};
