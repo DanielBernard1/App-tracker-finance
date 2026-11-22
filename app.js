@@ -48,8 +48,20 @@
   function render() {
     applyStaticI18n();
     view.innerHTML = "";
-    renderChart();
-    renderColumns();
+    try {
+      renderChart();
+    } catch (err) {
+      view.appendChild(el(`<div class="card"><div class="empty">Chart error: ${esc(err && err.message)}</div></div>`));
+    }
+    try {
+      renderColumns();
+    } catch (err) {
+      const box = document.createElement("div");
+      box.className = "card";
+      box.innerHTML = '<div class="empty" style="color:#ff6b6b">Columns error: ' + esc(err && (err.stack || err.message)) + "</div>";
+      view.appendChild(box);
+      console.error(err);
+    }
   }
 
   function applyStaticI18n() {
@@ -163,13 +175,12 @@
         </div>
         <span class="row-amount ${amtCls}">${sign}${esc(money(num(it.amount)))}</span>
       </div>`);
-    row.querySelector('input[type="checkbox"]').addEventListener("change", (e) => {
-      it.included = e.target.checked;
-      persist();
-      render();
-    });
-    row.querySelector(".row-main").addEventListener("click", () => openItemModal(it));
-    row.querySelector(".row-amount").addEventListener("click", () => openItemModal(it));
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (cb) cb.addEventListener("change", (e) => { it.included = e.target.checked; persist(); render(); });
+    const main = row.querySelector(".row-main");
+    if (main) main.addEventListener("click", () => openItemModal(it));
+    const amt = row.querySelector(".row-amount");
+    if (amt) amt.addEventListener("click", () => openItemModal(it));
     return row;
   }
 
@@ -186,14 +197,12 @@
         </div>
         <button class="btn ghost xs bought-btn">${g.bought ? esc(t("unbuy")) : esc(t("buy"))}</button>
       </div>`);
-    row.querySelector('input[type="checkbox"]').addEventListener("change", (e) => {
-      g.included = e.target.checked; persist(); render();
-    });
-    row.querySelector(".bought-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      g.bought = !g.bought; persist(); render();
-    });
-    row.querySelector(".row-main").addEventListener("click", () => openGoalModal(g));
+    const gcb = row.querySelector('input[type="checkbox"]');
+    if (gcb) gcb.addEventListener("change", (e) => { g.included = e.target.checked; persist(); render(); });
+    const bbtn = row.querySelector(".bought-btn");
+    if (bbtn) bbtn.addEventListener("click", (e) => { e.stopPropagation(); g.bought = !g.bought; persist(); render(); });
+    const gmain = row.querySelector(".row-main");
+    if (gmain) gmain.addEventListener("click", () => openGoalModal(g));
     return row;
   }
 
