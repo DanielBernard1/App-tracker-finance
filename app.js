@@ -164,7 +164,8 @@
 
     // Render after insertion so clientWidth is known
     requestAnimationFrame(() => {
-      window.Chart.render(chartHost, series, (v) => money(v), (iso) => fmtDate(iso), state.lang);
+      window.Chart.render(chartHost, series, (v) => money(v), (iso) => fmtDate(iso), state.lang,
+        { guaranteed: t("legConfirmed"), potential: t("legOptimistic") });
     });
 
     // Legend

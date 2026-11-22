@@ -280,3 +280,23 @@ button {
 .legend .dot-exp { background: var(--accent); opacity: 0.55; }
 
 .event-dot { cursor: pointer; }
+
+/* Hover tooltip on the timeline */
+.tl-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(20, 23, 30, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  min-width: 128px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+.tl-tip-date { color: var(--muted); margin-bottom: 6px; font-size: 11px; }
+.tl-tip-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.tl-tip-row .sw { width: 12px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+.tl-tip-lbl { color: var(--muted); }
+.tl-tip-val { margin-left: auto; font-weight: 650; color: var(--text); }
+.tl-cross { pointer-events: none; }

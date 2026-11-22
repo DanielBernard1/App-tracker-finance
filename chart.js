@@ -18,8 +18,10 @@
 
   // series: output of Projection.project
   // fmtMoney(value) -> string ; fmtDate(iso) -> string
-  function render(container, series, fmtMoney, fmtDate, lang) {
+  // labels: { guaranteed, potential } for the hover tooltip
+  function render(container, series, fmtMoney, fmtDate, lang, labels) {
     container.innerHTML = "";
+    const L = labels || { guaranteed: "Guaranteed", potential: "Potential" };
 
     const PX_PER_DAY = 6;         // horizontal density (scroll to see all)
     const H = 320;                // chart height
@@ -148,6 +150,19 @@
 
     // scroll wrapper
     const scroller = e2div("timeline-scroll");
+    // ----- hover crosshair (vertical line + two dots), hidden until hover -----
+    const cross = e("g", { class: "tl-cross", opacity: 0 });
+    const crossLine = e("line", {
+      x1: 0, y1: padTop, x2: 0, y2: H - padBottom,
+      stroke: "#e6e8ec", "stroke-width": 1, opacity: 0.6,
+    });
+    const dotOpt = e("circle", { r: 4, fill: "#8fb0ff", stroke: "#0f1115", "stroke-width": 1.5 });
+    const dotConf = e("circle", { r: 4.5, fill: "#cdd9ff", stroke: "#0f1115", "stroke-width": 1.5 });
+    cross.appendChild(crossLine);
+    cross.appendChild(dotOpt);
+    cross.appendChild(dotConf);
+    svg.appendChild(cross);
+
     scroller.appendChild(svg);
     container.appendChild(scroller);
 
@@ -163,7 +178,75 @@
     }
     container.appendChild(yOverlay);
 
+    // ----- floating tooltip (follows cursor), fixed to the viewport box -----
+    const tip = e2div("tl-tip");
+    tip.style.display = "none";
+    container.appendChild(tip);
+
+    function hideHover() {
+      cross.setAttribute("opacity", 0);
+      tip.style.display = "none";
+    }
+
+    function showHoverAt(clientX, clientY) {
+      const svgRect = svg.getBoundingClientRect();
+      // position within the (scrolled) svg, in svg user units
+      const px = clientX - svgRect.left;
+      let i = Math.round((px - padLeft) / PX_PER_DAY);
+      if (i < 0) i = 0;
+      if (i > n - 1) i = n - 1;
+
+      const cx = x(i);
+      const cyConf = y(series.confirmed[i]);
+      const cyOpt = y(series.optimistic[i]);
+      crossLine.setAttribute("x1", cx);
+      crossLine.setAttribute("x2", cx);
+      dotConf.setAttribute("cx", cx); dotConf.setAttribute("cy", cyConf);
+      dotOpt.setAttribute("cx", cx); dotOpt.setAttribute("cy", cyOpt);
+      cross.setAttribute("opacity", 1);
+
+      // tooltip content
+      const hasUpside = series.optimistic[i] - series.confirmed[i] > 0.005;
+      tip.innerHTML =
+        '<div class="tl-tip-date">' + escHtml(fmtDate(series.dates[i])) + '</div>' +
+        '<div class="tl-tip-row"><span class="sw sw-confirmed"></span>' +
+          '<span class="tl-tip-lbl">' + escHtml(L.guaranteed) + '</span>' +
+          '<span class="tl-tip-val">' + escHtml(fmtMoney(series.confirmed[i])) + '</span></div>' +
+        (hasUpside
+          ? '<div class="tl-tip-row"><span class="sw sw-optimistic"></span>' +
+            '<span class="tl-tip-lbl">' + escHtml(L.potential) + '</span>' +
+            '<span class="tl-tip-val">' + escHtml(fmtMoney(series.optimistic[i])) + '</span></div>'
+          : '');
+
+      // place tooltip relative to container, clamped to its width
+      const contRect = container.getBoundingClientRect();
+      tip.style.display = "block";
+      const tw = tip.offsetWidth || 150;
+      let left = clientX - contRect.left + 12;
+      if (left + tw > contRect.width - 4) left = clientX - contRect.left - tw - 12;
+      if (left < 4) left = 4;
+      tip.style.left = left + "px";
+      tip.style.top = "10px";
+    }
+
+    function onMove(ev) {
+      const pt = ev.touches ? ev.touches[0] : ev;
+      if (!pt) return;
+      showHoverAt(pt.clientX, pt.clientY);
+    }
+
+    svg.addEventListener("mousemove", onMove);
+    svg.addEventListener("mouseleave", hideHover);
+    svg.addEventListener("touchstart", (ev) => { onMove(ev); }, { passive: true });
+    svg.addEventListener("touchmove", (ev) => { onMove(ev); }, { passive: true });
+    svg.addEventListener("touchend", hideHover);
+
     return { svg, scroller };
+  }
+
+  function escHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   function e2div(cls) {
