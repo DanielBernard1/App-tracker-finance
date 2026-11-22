@@ -19,7 +19,7 @@
   // series: output of Projection.project
   // fmtMoney(value) -> string ; fmtDate(iso) -> string
   // labels: { guaranteed, potential } for the hover tooltip
-  function render(container, series, fmtMoney, fmtDate, lang, labels) {
+  function render(container, series, fmtMoney, fmtDate, lang, labels, onMarkerClick) {
     container.innerHTML = "";
     const L = labels || { guaranteed: "Guaranteed", potential: "Potential" };
 
@@ -127,10 +127,33 @@
       stroke: "#e6e8ec", "stroke-width": 1.5, opacity: 0.5,
     }));
 
+    // ----- goal markers (vertical lines at each goal date) -----
+    (series.markers || []).forEach((mk) => {
+      const i = mk.dateIndex;
+      const g = e("g", { class: "goal-marker" });
+      g.appendChild(e("line", {
+        x1: x(i), y1: padTop - 6, x2: x(i), y2: H - padBottom,
+        stroke: mk.bought ? "#ffb020" : "#c792ff",
+        "stroke-width": 1.5, "stroke-dasharray": "4 3", opacity: 0.85,
+      }));
+      // flag at top
+      const flag = e("circle", {
+        cx: x(i), cy: padTop - 6, r: 5,
+        fill: mk.bought ? "#ffb020" : "#c792ff",
+        class: "goal-flag",
+      });
+      g.appendChild(flag);
+      if (onMarkerClick) {
+        g.style.cursor = "pointer";
+        g.addEventListener("click", (ev) => { ev.stopPropagation(); onMarkerClick(mk, ev.clientX, ev.clientY); });
+      }
+      svg.appendChild(g);
+    });
+
     // ----- event dots -----
     const colorFor = {
-      income: "#39d98a", expected: "#5b8cff", fixcost: "#ff6b6b",
-      paylater: "#ffb020", purchase: "#ff6b6b",
+      income: "#39d98a", expected: "#5b8cff",
+      expense: "#ff6b6b", goalbought: "#ffb020",
     };
     series.events.forEach((ev) => {
       const i = ev.dateIndex;

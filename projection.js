@@ -1,28 +1,27 @@
-// Cash-flow projection engine.
-// Produces a per-day series of projected running balance over a horizon.
+// Cash-flow projection engine (v2 model).
 //
-// Two series are produced:
-//   confirmed  = starting balance + income streams + expected-is-NOT-included
-//                - fix costs - pay-later (on due date)
-//   optimistic = confirmed + expected/potential income (on their dates)
+// Series produced over a daily horizon:
+//   confirmed  = starting balance + all INCLUDED, non-potential items
+//                (income +, expense −) + bought goals as expense dips
+//   optimistic = confirmed + INCLUDED potential income
 //
-// Recurring items (income streams, fix costs) repeat monthly from `today`
-// on the same day-of-month.
+// Items may be one-time (apply once on `date`) or recurring (repeat monthly
+// from `date` across the horizon, same day-of-month).
 (function () {
   "use strict";
 
   const DAY_MS = 86400000;
 
-  function isoAddDays(startISO, n) {
-    const d = new Date(startISO + "T00:00:00");
-    d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
-  }
-
   function todayISO() {
     const d = new Date();
     const off = d.getTimezoneOffset();
     return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+  }
+
+  function isoAddDays(startISO, n) {
+    const d = new Date(startISO + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
   }
 
   function daysBetween(aISO, bISO) {
@@ -36,107 +35,100 @@
     return isNaN(n) ? 0 : n;
   }
 
-  // Build list of monthly occurrence dates (ISO) for a recurring item,
-  // starting at the first month boundary on/after `startISO`, within horizon.
-  function monthlyDates(startISO, horizonDays, dayOfMonth) {
-    const dates = [];
+  // Monthly recurrence dates (ISO) on/after startDate, clamped to month length,
+  // within [start, start+horizon].
+  function monthlyDates(firstISO, startISO, horizonDays) {
+    const out = [];
+    const first = new Date(firstISO + "T00:00:00");
     const start = new Date(startISO + "T00:00:00");
     const end = new Date(isoAddDays(startISO, horizonDays) + "T00:00:00");
-    // iterate month by month
-    let y = start.getFullYear();
-    let m = start.getMonth();
-    for (let i = 0; i < horizonDays / 28 + 2; i++) {
-      // clamp day-of-month to month length
+    const dom = first.getDate();
+    // begin at the item's own month, iterate forward
+    let y = first.getFullYear();
+    let m = first.getMonth();
+    for (let i = 0; i < horizonDays / 28 + 4; i++) {
       const lastDay = new Date(y, m + 1, 0).getDate();
-      const dom = Math.min(dayOfMonth, lastDay);
-      const occ = new Date(y, m, dom);
-      if (occ >= start && occ <= end) {
-        dates.push(occ.toISOString().slice(0, 10));
-      }
+      const occ = new Date(y, m, Math.min(dom, lastDay));
+      if (occ >= start && occ <= end) out.push(occ.toISOString().slice(0, 10));
       m++;
       if (m > 11) { m = 0; y++; }
     }
-    return dates;
+    return out;
   }
 
-  // Returns { dates:[iso...], confirmed:[num...], optimistic:[num...],
-  //           events:[{dateIndex, type, label, amount}] }
+  // Returns { dates, confirmed, optimistic, events, markers, startingBalance, horizonDays, start }
   function project(state, opts) {
     opts = opts || {};
-    const horizonDays = opts.horizonDays || 730; // ~2 years
+    const horizonDays = opts.horizonDays || 730;
     const start = opts.startISO || todayISO();
 
     const startingBalance = (state.accounts || []).reduce((s, a) => s + num(a.balance), 0);
 
-    // deltas[dayIndex] = { confirmed: +/-, optimistic: +/- } applied on that day
     const confirmedDelta = new Array(horizonDays + 1).fill(0);
     const optimisticDelta = new Array(horizonDays + 1).fill(0);
     const events = [];
 
-    function addDelta(dateISO, amount, bucket, meta) {
+    function applyOn(dateISO, amount, potential, meta) {
       const idx = daysBetween(start, dateISO);
       if (idx < 0 || idx > horizonDays) return;
-      if (bucket === "confirmed") {
-        confirmedDelta[idx] += amount;
-        optimisticDelta[idx] += amount; // confirmed also affects optimistic
+      if (potential) {
+        optimisticDelta[idx] += amount; // potential income only lifts the optimistic line
       } else {
-        optimisticDelta[idx] += amount; // optimistic-only (expected income)
+        confirmedDelta[idx] += amount;
+        optimisticDelta[idx] += amount; // confirmed also flows into optimistic
       }
-      if (meta) events.push(Object.assign({ dateIndex: idx, amount: amount }, meta));
+      if (meta) events.push(Object.assign({ dateIndex: idx, amount }, meta));
     }
 
-    const dom = (iso) => new Date(iso + "T00:00:00").getDate();
-
-    // Recurring income streams (monthly, same day-of-month as today)
-    const payday = dom(start);
-    (state.incomeStreams || []).forEach((s) => {
-      monthlyDates(start, horizonDays, s.payDay ? num(s.payDay) : payday).forEach((d) => {
-        addDelta(d, num(s.amount), "confirmed", { type: "income", label: s.name });
-      });
+    (state.items || []).forEach((it) => {
+      if (it.included === false) return;
+      const signed = (it.kind === "expense" ? -1 : 1) * num(it.amount);
+      const type = it.kind === "expense" ? "expense" : (it.potential ? "expected" : "income");
+      if (it.recurring) {
+        monthlyDates(it.date || start, start, horizonDays).forEach((d) => {
+          applyOn(d, signed, !!it.potential, { type, label: it.name, category: it.category });
+        });
+      } else {
+        applyOn(it.date || start, signed, !!it.potential, { type, label: it.name, category: it.category });
+      }
     });
 
-    // Recurring fix costs (monthly)
-    (state.fixCosts || []).forEach((f) => {
-      monthlyDates(start, horizonDays, f.dueDay ? num(f.dueDay) : 1).forEach((d) => {
-        addDelta(d, -num(f.amount), "confirmed", { type: "fixcost", label: f.name });
-      });
+    // Bought goals = one-time expense dip at the goal's date.
+    (state.goals || []).forEach((g) => {
+      if (g.bought && g.included !== false) {
+        applyOn(g.date || start, -num(g.target), false, { type: "goalbought", label: g.name });
+      }
     });
 
-    // Pay later: one-time dip on due date (unpaid only)
-    (state.payLater || []).forEach((p) => {
-      if (p.paid) return;
-      if (!p.dueDate) return;
-      addDelta(p.dueDate, -num(p.amount), "confirmed", { type: "paylater", label: p.name });
-    });
-
-    // Purchases already logged in the future? treat as one-time dips on their date
-    (state.purchases || []).forEach((pu) => {
-      if (!pu.date) return;
-      if (daysBetween(start, pu.date) <= 0) return; // past/today purchases don't affect future projection
-      addDelta(pu.date, -num(pu.amount), "confirmed", { type: "purchase", label: pu.name });
-    });
-
-    // Expected / potential income: optimistic-only
-    (state.expectedIncome || []).forEach((e) => {
-      const d = e.date || start;
-      addDelta(d, num(e.amount), "optimistic", { type: "expected", label: e.name });
-    });
-
-    // Accumulate into running balances
-    const dates = [];
-    const confirmed = [];
-    const optimistic = [];
-    let cRun = startingBalance;
-    let oRun = startingBalance;
+    // Accumulate running balances.
+    const dates = [], confirmed = [], optimistic = [];
+    let c = startingBalance, o = startingBalance;
     for (let i = 0; i <= horizonDays; i++) {
-      cRun += confirmedDelta[i];
-      oRun += optimisticDelta[i];
+      c += confirmedDelta[i];
+      o += optimisticDelta[i];
       dates.push(isoAddDays(start, i));
-      confirmed.push(Math.round(cRun * 100) / 100);
-      optimistic.push(Math.round(oRun * 100) / 100);
+      confirmed.push(Math.round(c * 100) / 100);
+      optimistic.push(Math.round(o * 100) / 100);
     }
 
-    return { dates, confirmed, optimistic, events, startingBalance, horizonDays, start };
+    // Goal markers: position + fulfillment (balance at that date / target).
+    const markers = [];
+    (state.goals || []).forEach((g) => {
+      if (g.included === false) return;
+      if (!g.date) return;
+      const idx = daysBetween(start, g.date);
+      if (idx < 0 || idx > horizonDays) return;
+      const balance = confirmed[idx];
+      const target = num(g.target);
+      const toward = Math.max(0, balance); // money available toward the goal
+      const pct = target > 0 ? Math.min(100, Math.round((toward / target) * 100)) : 0;
+      markers.push({
+        dateIndex: idx, name: g.name, target,
+        balance, toward, pct, bought: !!g.bought,
+      });
+    });
+
+    return { dates, confirmed, optimistic, events, markers, startingBalance, horizonDays, start };
   }
 
   window.Projection = { project, todayISO, isoAddDays, daysBetween };

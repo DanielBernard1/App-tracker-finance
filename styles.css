@@ -27,7 +27,7 @@ html, body {
 
 body {
   min-height: 100vh;
-  padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -300,3 +300,97 @@ button {
 .tl-tip-lbl { color: var(--muted); }
 .tl-tip-val { margin-left: auto; font-weight: 650; color: var(--text); }
 .tl-cross { pointer-events: none; }
+
+/* ---------- Two-column layout ---------- */
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+@media (max-width: 520px) {
+  .columns { grid-template-columns: 1fr; }
+}
+.col {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px 12px;
+}
+.col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.col-head h2 { font-size: 15px; margin: 0; }
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.list-row:last-child { border-bottom: none; }
+.list-row.off { opacity: 0.4; }
+.list-row .row-main { flex: 1; min-width: 0; cursor: pointer; }
+.list-row .row-title { font-size: 14px; font-weight: 550; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.list-row .row-sub { font-size: 12px; }
+.list-row .row-amount { font-size: 13px; cursor: pointer; }
+
+/* custom checkbox */
+.chk { position: relative; display: inline-flex; flex: 0 0 auto; cursor: pointer; }
+.chk input { position: absolute; opacity: 0; width: 22px; height: 22px; margin: 0; cursor: pointer; }
+.chk-box {
+  width: 22px; height: 22px; border-radius: 6px;
+  border: 1.5px solid var(--border); background: var(--surface-2);
+  display: inline-block; position: relative;
+}
+.chk input:checked + .chk-box { background: var(--accent); border-color: var(--accent); }
+.chk input:checked + .chk-box::after {
+  content: ""; position: absolute; left: 7px; top: 3px;
+  width: 5px; height: 10px; border: solid white; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.btn.xs { padding: 5px 9px; font-size: 12px; }
+.bought-btn { flex: 0 0 auto; }
+
+.bottom-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.bottom-actions .btn { flex: 1; }
+
+.toggles { display: flex; gap: 18px; flex-wrap: wrap; }
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; }
+.switch input { width: auto; }
+
+.chip.warn { background: #3a2e15; color: var(--warn); }
+.chip.muted { background: var(--surface-2); color: var(--muted); }
+
+/* ---------- Goal marker popover ---------- */
+.pop-backdrop { position: fixed; inset: 0; z-index: 60; }
+.marker-pop {
+  position: fixed;
+  z-index: 61;
+  width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.marker-pop .mp-name { font-weight: 600; margin-bottom: 6px; }
+.marker-pop .mp-pct { font-size: 26px; font-weight: 700; color: var(--accent); }
+.marker-pop .mp-frac { font-size: 14px; color: var(--text); margin-top: 2px; }
+.marker-pop .mp-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.marker-pop .mp-bought { color: var(--warn); }
+
+/* legend extra dots */
+.legend .dot-goal { background: #c792ff; }
+
+.goal-marker { cursor: pointer; }
+.goal-flag { cursor: pointer; }
