@@ -10,7 +10,8 @@
     categories: [],   // string[]  (editable)
     // Combined income/expense items:
     // { id, name, amount, kind:"income"|"expense", date, category,
-    //   recurring:bool, potential:bool, included:bool }
+    //   recurring:bool, potential:bool, payLater:bool, included:bool }
+    // payLater (expenses only): the amount is subtracted 30 days after `date`.
     items: [],
     // Goals:
     // { id, name, target, date, bought:bool, included:bool }
@@ -68,7 +69,7 @@
       "Travel", "Other",
     ];
     const mk = (o) => Object.assign({
-      id: uid(), recurring: false, potential: false, included: true, category: "Other",
+      id: uid(), recurring: false, potential: false, payLater: false, included: true, category: "Other",
     }, o);
 
     s.items = [
@@ -87,6 +88,7 @@
       mk({ name: "Gym", amount: 35, kind: "expense", date: isoAddDays(12), category: "Subscriptions", recurring: true }),
       // One-time expenses (big dips)
       mk({ name: "MacBook Pro", amount: 2400, kind: "expense", date: isoAddDays(45), category: "Tech" }),
+      mk({ name: "Sofa (pay later)", amount: 1500, kind: "expense", date: isoAddDays(20), category: "Shopping", payLater: true }),
       mk({ name: "Used car", amount: 6500, kind: "expense", date: isoAddDays(95), category: "Transport" }),
       mk({ name: "Flights to Japan", amount: 320, kind: "expense", date: isoAddDays(120), category: "Travel" }),
     ];

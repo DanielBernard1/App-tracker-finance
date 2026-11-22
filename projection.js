@@ -80,16 +80,22 @@
       if (meta) events.push(Object.assign({ dateIndex: idx, amount }, meta));
     }
 
+    const PAY_LATER_DAYS = 30;
     (state.items || []).forEach((it) => {
       if (it.included === false) return;
       const signed = (it.kind === "expense" ? -1 : 1) * num(it.amount);
       const type = it.kind === "expense" ? "expense" : (it.potential ? "expected" : "income");
+      // Pay-later only applies to expenses: the money leaves 30 days after the date.
+      const payLater = !!it.payLater && it.kind === "expense";
+      const shift = (dateISO) => payLater ? isoAddDays(dateISO, PAY_LATER_DAYS) : dateISO;
+      const meta = { type, label: it.name, category: it.category, payLater };
       if (it.recurring) {
-        monthlyDates(it.date || start, start, horizonDays).forEach((d) => {
-          applyOn(d, signed, !!it.potential, { type, label: it.name, category: it.category });
+        // Each monthly occurrence is computed on the item's own date, then shifted.
+        monthlyDates(it.date || start, start, horizonDays + PAY_LATER_DAYS).forEach((d) => {
+          applyOn(shift(d), signed, !!it.potential, meta);
         });
       } else {
-        applyOn(it.date || start, signed, !!it.potential, { type, label: it.name, category: it.category });
+        applyOn(shift(it.date || start), signed, !!it.potential, meta);
       }
     });
 

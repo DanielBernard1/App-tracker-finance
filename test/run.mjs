@@ -249,6 +249,57 @@ function run() {
     "startingBalance=" + s11.startingBalance + " sumAcc=" + sumAcc);
   ok("day-0 confirmed equals starting balance", Math.abs(s11.confirmed[0] - sumAcc) < 0.001);
 
+  // ---- Test 12: pay-later expense shifts 30 days ----
+  console.log("\nTest 12: pay-later shift");
+  const envP = buildEnv();
+  const CP = envP.ctx;
+  load(CP, "i18n.js"); load(CP, "store.js"); load(CP, "projection.js"); load(CP, "chart.js"); load(CP, "app.js");
+  const StoreP = envP.win.Store;
+  const ProjP = envP.win.Projection;
+  const base = ProjP.todayISO();
+  // Build two identical expenses, one pay-later, both on the same date (day 10).
+  const d10 = StoreP.isoAddDays(10);
+  const stTest = {
+    accounts: [{ id: "a", name: "x", balance: 1000, currency: "EUR" }],
+    items: [
+      { id: "e1", name: "Normal exp", amount: 100, kind: "expense", date: d10, recurring: false, potential: false, payLater: false, included: true },
+      { id: "e2", name: "Later exp", amount: 100, kind: "expense", date: d10, recurring: false, potential: false, payLater: true, included: true },
+    ],
+    goals: [],
+  };
+  const sp = ProjP.project(stTest, { horizonDays: 100 });
+  const normalEv = sp.events.find((e) => e.label === "Normal exp");
+  const laterEv = sp.events.find((e) => e.label === "Later exp");
+  ok("normal expense applies at day 10", normalEv && normalEv.dateIndex === 10, normalEv && normalEv.dateIndex);
+  ok("pay-later expense applies at day 40 (10 + 30)", laterEv && laterEv.dateIndex === 40, laterEv && laterEv.dateIndex);
+  // balance should NOT drop at day 10 for the later one, only the normal 100
+  const dropAt10 = sp.confirmed[9] - sp.confirmed[10];
+  const dropAt40 = sp.confirmed[39] - sp.confirmed[40];
+  ok("day-10 drop is only the normal expense (100)", Math.abs(dropAt10 - 100) < 0.01, "drop=" + dropAt10);
+  ok("day-40 drop is the pay-later expense (100)", Math.abs(dropAt40 - 100) < 0.01, "drop=" + dropAt40);
+  // pay-later only affects expenses: income with payLater flag should NOT shift
+  const stInc = { accounts: [], items: [{ id: "i1", name: "Inc", amount: 50, kind: "income", date: d10, payLater: true, included: true }], goals: [] };
+  const spi = ProjP.project(stInc, { horizonDays: 100 });
+  const incEv = spi.events.find((e) => e.label === "Inc");
+  ok("income ignores pay-later (stays at day 10)", incEv && incEv.dateIndex === 10, incEv && incEv.dateIndex);
+
+  // ---- Test 13: pay-later checkbox in the add-item modal persists ----
+  console.log("\nTest 13: pay-later checkbox in modal");
+  const envM = buildEnv();
+  const CM = envM.ctx;
+  load(CM, "i18n.js"); load(CM, "store.js"); load(CM, "projection.js"); load(CM, "chart.js"); load(CM, "app.js");
+  const addBtnM = envM.view.querySelectorAll(".col")[0].querySelector(".icon-btn");
+  addBtnM.dispatch("click", { target: addBtnM });
+  const plBox = envM.modalRoot.querySelector('[name="payLater"]');
+  ok("pay-later checkbox present in item modal", !!plBox);
+  const setM = (n, v) => { const f = envM.modalRoot.querySelector(`[name="${n}"]`); if (f) f.value = v; return f; };
+  setM("name", "BNPL thing"); setM("amount", "200"); setM("kind", "expense"); setM("date", envM.win.Store.isoAddDays(5));
+  if (plBox) plBox.checked = true;
+  envM.modalRoot.querySelector("#m-save").dispatch("click", { target: {} });
+  const stM = JSON.parse(envM.store["finance-tracker:v2"]);
+  const savedM = stM.items.find((i) => i.name === "BNPL thing");
+  ok("item saved with payLater=true", savedM && savedM.payLater === true, JSON.stringify(savedM));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

@@ -170,7 +170,7 @@
           <span class="chk-box"></span>
         </label>
         <div class="row-main">
-          <span class="row-title">${esc(it.name)} ${it.potential ? `<span class="chip">${esc(t("potentialTag"))}</span>` : ""} ${it.recurring ? `<span class="chip muted">↻</span>` : ""}</span>
+          <span class="row-title">${esc(it.name)} ${it.potential ? `<span class="chip">${esc(t("potentialTag"))}</span>` : ""} ${it.payLater && it.kind === "expense" ? `<span class="chip warn">${esc(t("payLaterTag"))}</span>` : ""} ${it.recurring ? `<span class="chip muted">↻</span>` : ""}</span>
           <span class="row-sub">${esc(fmtDate(it.date))} · ${esc(it.category || "")}</span>
         </div>
         <span class="row-amount ${amtCls}">${sign}${esc(money(num(it.amount)))}</span>
@@ -235,6 +235,7 @@
       <div class="field toggles">
         <label class="switch"><input name="recurring" type="checkbox" ${item && item.recurring ? "checked" : ""}/> ${esc(t("recurring"))}</label>
         <label class="switch"><input name="potential" type="checkbox" ${item && item.potential ? "checked" : ""}/> ${esc(t("potential"))}</label>
+        <label class="switch"><input name="payLater" type="checkbox" ${item && item.payLater ? "checked" : ""}/> ${esc(t("payLaterOpt"))}</label>
       </div>`;
     openModal(isEdit ? t("editItem") : t("addItem"), fields,
       (d) => {
@@ -242,6 +243,7 @@
         const payload = {
           name: d.name, amount: num(d.amount), kind: d.kind, date: d.date,
           category: d.category, recurring: !!d.recurring, potential: !!d.potential,
+          payLater: !!d.payLater,
         };
         if (item) Object.assign(item, payload);
         else state.items.push(Object.assign({ id: Store.uid(), included: true }, payload));

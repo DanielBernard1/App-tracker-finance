@@ -30,6 +30,8 @@ window.I18N = {
     expense: "Expense (−)",
     recurring: "Repeats monthly",
     potential: "Potential (uncertain)",
+    payLaterOpt: "Pay later (+30 days)",
+    payLaterTag: "pay later",
 
     // Goal modal
     addGoal: "Add goal",
@@ -103,6 +105,8 @@ window.I18N = {
     expense: "支出 (−)",
     recurring: "每月重复",
     potential: "潜在（不确定）",
+    payLaterOpt: "延后支付（+30天）",
+    payLaterTag: "延后支付",
 
     addGoal: "添加目标",
     editGoal: "编辑目标",
