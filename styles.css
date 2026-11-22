@@ -270,9 +270,9 @@ button {
   color: var(--muted);
 }
 .legend .lg { display: inline-flex; align-items: center; gap: 6px; }
-.legend .sw { width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; display: inline-block; }
-.legend .sw-confirmed { border-top-color: var(--accent); }
-.legend .sw-optimistic { border-top-color: var(--accent); opacity: 0.5; border-top-style: dashed; }
+.legend .sw { width: 16px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend .sw-confirmed { background: var(--accent); opacity: 0.6; }
+.legend .sw-optimistic { background: var(--accent); opacity: 0.22; }
 .legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .legend .dot-income { background: var(--pos); }
 .legend .dot-fix { background: var(--neg); }

@@ -85,33 +85,37 @@
       }
     }
 
-    // ----- optimistic band (between confirmed and optimistic) -----
-    // path: optimistic across, then confirmed back
-    let topPts = [], botPts = [];
+    // Build point lists for confirmed and optimistic lines.
+    const topPts = [], botPts = [];
     for (let i = 0; i < n; i++) {
       topPts.push(`${x(i)},${y(series.optimistic[i])}`);
       botPts.push(`${x(i)},${y(series.confirmed[i])}`);
     }
-    const bandPath = "M" + topPts.join(" L") + " L" + botPts.reverse().join(" L") + " Z";
-    svg.appendChild(e("path", { d: bandPath, fill: "#5b8cff", opacity: 0.12 }));
 
-    // ----- fill under confirmed line (subtle) -----
-    const baseY = y(Math.max(lo, 0));
-    const areaPath = "M" + botPts.reverse().join(" L") +
-      ` L${x(n - 1)},${baseY} L${x(0)},${baseY} Z`;
-    svg.appendChild(e("path", { d: areaPath, fill: "#39d98a", opacity: 0.08 }));
+    // Baseline for the filled area (bottom of the plot, so the whole region
+    // under the curve is filled — the "mountain" look from the sketch).
+    const baseY = H - padBottom;
 
-    // ----- optimistic line (faded) -----
+    // ----- POTENTIAL band: lighter-opacity fill between confirmed and optimistic -----
+    // (guaranteed ≤ potential, so this is the upside sitting above the solid area)
+    const bandPath = "M" + topPts.join(" L") + " L" + botPts.slice().reverse().join(" L") + " Z";
+    svg.appendChild(e("path", { d: bandPath, fill: "#5b8cff", opacity: 0.22 }));
+
+    // ----- GUARANTEED area: solid fill from baseline up to the confirmed line -----
+    const areaPath = "M" + `${x(0)},${baseY} L` + botPts.join(" L") + ` L${x(n - 1)},${baseY} Z`;
+    svg.appendChild(e("path", { d: areaPath, fill: "#5b8cff", opacity: 0.6 }));
+
+    // ----- potential line edge (faded) -----
     svg.appendChild(e("polyline", {
       points: topPts.join(" "),
-      fill: "none", stroke: "#5b8cff", "stroke-width": 1.5,
-      opacity: 0.45, "stroke-dasharray": "5 4",
+      fill: "none", stroke: "#8fb0ff", "stroke-width": 1.5,
+      opacity: 0.5,
     }));
 
-    // ----- confirmed line (solid) -----
+    // ----- guaranteed line edge (crisp) -----
     svg.appendChild(e("polyline", {
       points: botPts.join(" "),
-      fill: "none", stroke: "#5b8cff", "stroke-width": 2.5,
+      fill: "none", stroke: "#cdd9ff", "stroke-width": 2,
       "stroke-linejoin": "round", "stroke-linecap": "round",
     }));
 
