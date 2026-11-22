@@ -1,5 +1,7 @@
-// Service worker: cache-first offline support for the app shell.
-const CACHE = "finance-tracker-v8";
+// Service worker: network-first for app code/HTML so updates show up as soon
+// as you're online; cache is used only as an offline fallback. Static assets
+// (icons, manifest) stay cache-first.
+const CACHE = "finance-tracker-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -26,19 +28,39 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+// Treat our own HTML/CSS/JS as "code" → network-first.
+function isCode(url) {
+  return /\.(html|css|js|webmanifest)$/.test(url.pathname) || url.pathname.endsWith("/");
+}
+
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
-  e.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
+  const url = new URL(req.url);
+
+  if (isCode(url)) {
+    // network-first: always try the network, update cache, fall back offline
+    e.respondWith(
+      fetch(req)
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
           return res;
         })
-        .catch(() => caches.match("./index.html"));
-    })
+        .catch(() => caches.match(req).then((c) => c || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  // everything else (icons, images): cache-first
+  e.respondWith(
+    caches.match(req).then((cached) =>
+      cached ||
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match("./index.html"))
+    )
   );
 });
