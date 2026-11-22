@@ -1,0 +1,9 @@
+{
+  "name": "app-tracker-finance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline cash-flow timeline finance tracker (PWA).",
+  "scripts": {
+    "test": "node test/run.mjs"
+  }
+}
