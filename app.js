@@ -126,14 +126,14 @@
     // Left: income/expenses
     const left = el('<div class="col"></div>');
     left.appendChild(colHeader(t("colItems"), () => openItemModal()));
-    const items = [...state.items].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const items = (Array.isArray(state.items) ? [...state.items] : []).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     if (!items.length) left.appendChild(el(`<div class="empty">${esc(t("noItems"))}</div>`));
     items.forEach((it) => left.appendChild(itemRow(it)));
 
     // Right: goals
     const right = el('<div class="col"></div>');
     right.appendChild(colHeader(t("colGoals"), () => openGoalModal()));
-    const goals = [...state.goals].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const goals = (Array.isArray(state.goals) ? [...state.goals] : []).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     if (!goals.length) right.appendChild(el(`<div class="empty">${esc(t("noGoals"))}</div>`));
     goals.forEach((g) => right.appendChild(goalRow(g)));
 

@@ -22,7 +22,12 @@
       const raw = localStorage.getItem(KEY);
       if (!raw) return structuredClone(DEFAULT_STATE);
       const parsed = JSON.parse(raw);
-      return Object.assign(structuredClone(DEFAULT_STATE), parsed);
+      const merged = Object.assign(structuredClone(DEFAULT_STATE), parsed);
+      // Sanitize: any field that should be an array must be one, or we reset it.
+      ["accounts", "categories", "items", "goals"].forEach((k) => {
+        if (!Array.isArray(merged[k])) merged[k] = [];
+      });
+      return merged;
     } catch (e) {
       return structuredClone(DEFAULT_STATE);
     }
