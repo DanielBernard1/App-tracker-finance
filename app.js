@@ -178,7 +178,7 @@
     items.forEach((it) => left.appendChild(itemRow(it)));
 
     // Right: goals
-    const right = el('<div class="col"></div>');
+    const right = el('<div class="col col-goals"></div>');
     right.appendChild(colHeader(t("colGoals"), () => openGoalModal()));
     const goals = (Array.isArray(state.goals) ? [...state.goals] : []).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     if (!goals.length) right.appendChild(el(`<div class="empty">${esc(t("noGoals"))}</div>`));
@@ -187,6 +187,9 @@
     cols.appendChild(left);
     cols.appendChild(right);
     view.appendChild(cols);
+
+    // Easter egg: a little raccoon hiding behind the Goals column (upper-right).
+    if (window.Raccoon) { try { window.Raccoon.mount(right); } catch (e) {} }
 
     // bottom actions: accounts + categories
     const actions = el('<div class="bottom-actions"></div>');

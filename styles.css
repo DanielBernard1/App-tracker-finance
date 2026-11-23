@@ -576,3 +576,54 @@ button {
 .mp-row-cur { font-size: 13px; color: var(--text); font-weight: 600; }
 .mp-row-pct { font-size: 13px; color: var(--accent); font-weight: 700; }
 .mp-row-sub { font-size: 11px; color: var(--muted); }
+
+/* ---------- Easter-egg raccoon (behind Goals, upper-right) ---------- */
+.col-goals { position: relative; }
+.raccoon {
+  position: absolute;
+  top: -16px;            /* peeks above the card's top edge */
+  right: 14px;
+  width: 46px;
+  height: 46px;
+  z-index: 1;            /* behind the card content visually, above the card bg */
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+/* raccoon fur/body colors (gray, theme-independent so he always reads as a raccoon) */
+.raccoon .rc-body { fill: #8a8f98; }
+.raccoon .rc-fur  { stroke: #6f747d; }
+.raccoon .rc-ear  { fill: #b9bdc4; }
+.raccoon .rc-mask { fill: #3a3d44; }
+.raccoon .rc-eye  { fill: #f3f3f5; }
+.raccoon .rc-eye-sh { fill: #2a2c31; }
+.raccoon .rc-snout { fill: #d7dadf; }
+.raccoon .rc-nose { fill: #2a2c31; }
+
+.raccoon .rc-back, .raccoon .rc-front {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  transition: transform 0.45s cubic-bezier(.34,1.3,.5,1), opacity 0.35s ease;
+  transform-origin: bottom center;
+}
+.raccoon .rc-back { height: 60%; }      /* only his back shows while hiding */
+.raccoon .rc-front { height: 100%; }
+
+/* Hiding: back visible (poking up a little), front hidden below the edge */
+.raccoon.hiding .rc-back  { opacity: 1; transform: translateY(0) scaleX(1); }
+.raccoon.hiding .rc-front { opacity: 0; transform: translateY(60%); }
+
+/* Turned around: back gone, front sits up fully */
+.raccoon.turned .rc-back  { opacity: 0; transform: translateY(40%) scale(0.7); }
+.raccoon.turned .rc-front { opacity: 1; transform: translateY(-10px); }
+
+/* Tap wiggle */
+.raccoon.wiggle .rc-back { animation: rc-wiggle 0.3s ease; }
+@keyframes rc-wiggle {
+  0%,100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-3px) rotate(-6deg); }
+  75% { transform: translateY(-3px) rotate(6deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .raccoon .rc-back, .raccoon .rc-front { transition: opacity 0.2s ease; }
+  .raccoon.wiggle .rc-back { animation: none; }
+}

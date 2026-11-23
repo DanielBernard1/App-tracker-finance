@@ -1,7 +1,7 @@
 // Service worker: network-first for app code/HTML so updates show up as soon
 // as you're online; cache is used only as an offline fallback. Static assets
 // (icons, manifest) stay cache-first.
-const CACHE = "finance-tracker-v12";
+const CACHE = "finance-tracker-v13";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const ASSETS = [
   "./store.js",
   "./projection.js",
   "./chart.js",
+  "./raccoon.js",
   "./app.js",
   "./manifest.webmanifest",
   "./icon-192.png",

@@ -46,7 +46,10 @@ function buildEnv() {
     Intl, Math, Date, JSON, console,
     structuredClone: (o) => JSON.parse(JSON.stringify(o)),
     requestAnimationFrame: (fn) => fn(),  // run chart render synchronously
-    setTimeout: (fn) => { try { fn(); } catch (e) {} return 0; },
+    // setTimeout is a no-op here (does NOT auto-fire) so deferred resets like the
+    // raccoon auto-hide don't run during synchronous assertions.
+    setTimeout: () => 0,
+    clearTimeout: () => {},
     confirm: () => true,
     parseFloat, parseInt, isNaN,
   };
@@ -179,7 +182,7 @@ function run() {
   // reset to clean sample
   const env3 = buildEnv();
   const C = env3.ctx;
-  load(C, "i18n.js"); load(C, "store.js"); load(C, "projection.js"); load(C, "chart.js"); load(C, "app.js");
+  load(C, "i18n.js"); load(C, "store.js"); load(C, "projection.js"); load(C, "chart.js"); load(C, "raccoon.js"); load(C, "app.js");
   const v3 = env3.view, mr3 = env3.modalRoot;
   // click the left column's add button (+)
   const leftCol = v3.querySelectorAll(".col")[0];
@@ -394,6 +397,41 @@ function run() {
   ok("body theme updates on change", docT.body.getAttribute("data-theme") === "midnight", docT.body.getAttribute("data-theme"));
   const stT = JSON.parse(envT.store["finance-tracker:v2"]);
   ok("theme persisted to state", stT.theme === "midnight", stT.theme);
+
+  // ---- Test 18: raccoon easter egg ----
+  console.log("\nTest 18: raccoon");
+  const envR = buildEnv();
+  const themeSelR = new El("select"); themeSelR.setAttribute("id", "theme-select");
+  envR.document.body.appendChild(themeSelR); envR.document.register(themeSelR);
+  load(envR.ctx, "i18n.js"); load(envR.ctx, "store.js"); load(envR.ctx, "projection.js"); load(envR.ctx, "chart.js"); load(envR.ctx, "raccoon.js"); load(envR.ctx, "app.js");
+  const Raccoon = envR.win.Raccoon;
+
+  // random distribution: always 1..10, mean near 5
+  let bad = 0, sum = 0, N = 5000, minSeen = 99, maxSeen = 0;
+  for (let i = 0; i < N; i++) { const r = Raccoon.rollTapTarget(); if (r < 1 || r > 10 || r !== Math.round(r)) bad++; sum += r; minSeen = Math.min(minSeen, r); maxSeen = Math.max(maxSeen, r); }
+  ok("tap target always an integer in 1..10", bad === 0, "bad=" + bad);
+  const mean = sum / N;
+  // The true midpoint of integers 1..10 is 5.5, so a symmetric distribution
+  // centers there (not 5). Allow a small sampling tolerance.
+  ok("distribution centered (mean ~5.5)", mean > 5.1 && mean < 5.9, "mean=" + mean.toFixed(2));
+  ok("distribution spans the range (hits 1 and 10)", minSeen === 1 && maxSeen === 10, "min=" + minSeen + " max=" + maxSeen);
+
+  // mounted in the goals column
+  const raccoonEl = envR.view.querySelector(".raccoon");
+  ok("raccoon mounted in goals column", !!raccoonEl);
+  const goalCol = envR.view.querySelectorAll(".col-goals")[0];
+  ok("raccoon is inside the goals column", goalCol && goalCol.querySelector(".raccoon") === raccoonEl);
+  ok("raccoon starts hidden", raccoonEl && raccoonEl.classList.contains("hiding"));
+
+  // tapping exactly `target` times turns him around; fewer does not
+  const inst = Raccoon.mount(new El("div"));
+  inst._state.target = 4; inst._state.taps = 0; inst._state.turned = false;
+  inst.el.classList.remove("turned"); inst.el.classList.add("hiding");
+  inst.tap(); inst.tap(); inst.tap();
+  ok("not turned before reaching target", !inst.el.classList.contains("turned") && inst.el.classList.contains("hiding"));
+  inst.tap(); // 4th → reaches target
+  ok("turns around when target reached", inst.el.classList.contains("turned") && !inst.el.classList.contains("hiding"));
+  ok("taps ignored while turned (no crash)", (inst.tap(), inst.el.classList.contains("turned")));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
