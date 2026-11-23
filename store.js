@@ -6,8 +6,11 @@
   const CURRENCIES = ["EUR", "USD", "CNY"];
   const SYMBOLS = { EUR: "€", USD: "$", CNY: "¥" };
 
+  const THEMES = ["luxury", "midnight", "graphite", "sand", "mist"];
+
   const DEFAULT_STATE = {
     lang: "en",
+    theme: "luxury",
     baseCurrency: "EUR",
     seeded: false,
     // Manual, editable exchange rates INTO the base (EUR). rates[X] = EUR per 1 X.
@@ -123,5 +126,5 @@
     return s;
   }
 
-  window.Store = { load, save, uid, seed, isoAddDays, num, DEFAULT_STATE, CURRENCIES, SYMBOLS };
+  window.Store = { load, save, uid, seed, isoAddDays, num, DEFAULT_STATE, CURRENCIES, SYMBOLS, THEMES };
 })();

@@ -52,6 +52,8 @@ function buildEnv() {
   };
   sandbox.window = sandbox;   // bare `window` === global scope
   sandbox.globalThis = sandbox;
+  // theme support used by app.js init
+  sandbox.getComputedStyle = () => ({ getPropertyValue: () => "" });
   const ctx = createContext(sandbox);
   return { ctx, sandbox, win: sandbox, document, view, modalRoot, langSel, localStorage, store };
 }
@@ -375,6 +377,23 @@ function run() {
   ok("bought removes EUR split (1000)", Math.abs(dEUR - 1000) < 0.01, "dEUR=" + dEUR);
   ok("bought removes USD split (100)", Math.abs(dUSD - 100) < 0.01, "dUSD=" + dUSD);
   ok("bought removes CNY split (2000)", Math.abs(dCNY - 2000) < 0.01, "dCNY=" + dCNY);
+
+  // ---- Test 17: theme switcher ----
+  console.log("\nTest 17: theme switcher");
+  const envT = buildEnv();
+  const docT = envT.document;
+  // theme select element
+  const themeSel = new El("select"); themeSel.setAttribute("id", "theme-select");
+  docT.body.appendChild(themeSel); docT.register(themeSel);
+  load(envT.ctx, "i18n.js"); load(envT.ctx, "store.js"); load(envT.ctx, "projection.js"); load(envT.ctx, "chart.js"); load(envT.ctx, "app.js");
+  ok("default theme applied to body (luxury)", docT.body.getAttribute("data-theme") === "luxury", docT.body.getAttribute("data-theme"));
+  ok("theme select populated with 5 options", themeSel.querySelectorAll("option").length === 5, themeSel.querySelectorAll("option").length);
+  // switch to midnight
+  themeSel.value = "midnight";
+  themeSel.dispatch("change", { target: themeSel });
+  ok("body theme updates on change", docT.body.getAttribute("data-theme") === "midnight", docT.body.getAttribute("data-theme"));
+  const stT = JSON.parse(envT.store["finance-tracker:v2"]);
+  ok("theme persisted to state", stT.theme === "midnight", stT.theme);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

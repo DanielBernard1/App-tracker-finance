@@ -10,6 +10,31 @@
 
   const view = document.getElementById("view");
   const modalRoot = document.getElementById("modal-root");
+  const THEMES = window.Store.THEMES;
+
+  function applyTheme() {
+    const th = THEMES.includes(state.theme) ? state.theme : "luxury";
+    document.body.setAttribute("data-theme", th);
+  }
+
+  // Read the current theme's chart colors from CSS variables.
+  function chartColors() {
+    try {
+      const cs = getComputedStyle(document.body);
+      const v = (name, fb) => (cs.getPropertyValue(name).trim() || fb);
+      return {
+        pos: v("--chart-pos", "#5b8cff"),
+        posLt: v("--chart-pos-lt", "#8fb0ff"),
+        neg: v("--chart-neg", "#ff6b6b"),
+        negLt: v("--chart-neg-lt", "#ff9a9a"),
+        grid: v("--chart-grid", "#2a2f3a"),
+        ink: v("--chart-ink", "#e6e8ec"),
+        surface: v("--surface", "#171a21"),
+      };
+    } catch (e) {
+      return null;
+    }
+  }
 
   const CURRENCIES = window.Store.CURRENCIES; // ["EUR","USD","CNY"]
   const SYMBOLS = window.Store.SYMBOLS;
@@ -101,6 +126,7 @@
         labels: { guaranteed: t("legConfirmed"), potential: t("legOptimistic"), all: t("filterAll") },
         symbols: SYMBOLS,
         fixedAxis: { hi: 15000, lo: -5000 },
+        colors: chartColors(),
         onMarkerClick: (mk, cx, cy) => showMarkerPopover(mk, cx, cy),
         onFilterChange: (f) => { chartFilter = f; render(); },
       });
@@ -466,6 +492,21 @@
   langSelect.addEventListener("change", () => { state.lang = langSelect.value; window.STATE_LANG = state.lang; persist(); render(); });
   document.getElementById("settings-btn").addEventListener("click", openSettingsModal);
 
+  // Theme picker
+  const themeSelect = document.getElementById("theme-select");
+  if (themeSelect) {
+    const labels = { luxury: "Luxury", midnight: "Midnight", graphite: "Graphite", sand: "Sand", mist: "Mist" };
+    themeSelect.innerHTML = THEMES.map((th) => `<option value="${th}">${labels[th] || th}</option>`).join("");
+    themeSelect.value = THEMES.includes(state.theme) ? state.theme : "luxury";
+    themeSelect.addEventListener("change", () => {
+      state.theme = themeSelect.value;
+      persist();
+      applyTheme();
+      render(); // re-render so the chart picks up new theme colors
+    });
+  }
+
   // ---------- init ----------
+  applyTheme();
   render();
 })();

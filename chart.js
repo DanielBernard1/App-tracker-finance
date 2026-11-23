@@ -8,8 +8,9 @@
   "use strict";
 
   const NS = "http://www.w3.org/2000/svg";
-  const POS = "#5b8cff", POS_LT = "#8fb0ff";
-  const NEG = "#ff6b6b", NEG_LT = "#ff9a9a";
+  // Theme colors (overridable via opts.colors at render time).
+  let POS = "#5b8cff", POS_LT = "#8fb0ff", NEG = "#ff6b6b", NEG_LT = "#ff9a9a";
+  let GRID = "#2a2f3a", INK = "#e6e8ec", SURFACE = "#171a21";
 
   function e(tag, attrs, children) {
     const n = document.createElementNS(NS, tag);
@@ -32,6 +33,12 @@
   function render(container, projection, opts) {
     opts = opts || {};
     container.innerHTML = "";
+    if (opts.colors) {
+      const c = opts.colors;
+      POS = c.pos || POS; POS_LT = c.posLt || POS_LT;
+      NEG = c.neg || NEG; NEG_LT = c.negLt || NEG_LT;
+      GRID = c.grid || GRID; INK = c.ink || INK; SURFACE = c.surface || SURFACE;
+    }
     const L = opts.labels || { guaranteed: "Guaranteed", potential: "Potential", all: "All" };
     const filter = opts.filter || "ALL";
     const CURRENCIES = projection.currencies || ["EUR", "USD", "CNY"];
@@ -89,7 +96,7 @@
     const yTicks = 4;
     for (let t = 0; t <= yTicks; t++) {
       const val = lo + (hi - lo) * (t / yTicks);
-      svg.appendChild(e("line", { x1: 0, y1: y(val), x2: W, y2: y(val), stroke: "#2a2f3a", "stroke-width": 1, "stroke-dasharray": "3 4" }));
+      svg.appendChild(e("line", { x1: 0, y1: y(val), x2: W, y2: y(val), stroke: GRID, "stroke-width": 1, "stroke-dasharray": "3 4" }));
     }
     // month ticks
     let lastMonth = "";
@@ -97,8 +104,8 @@
       const mk = projection.dates[i].slice(0, 7);
       if (mk !== lastMonth) {
         lastMonth = mk;
-        svg.appendChild(e("line", { x1: x(i), y1: padTop, x2: x(i), y2: H - padBottom, stroke: "#222631", "stroke-width": 1 }));
-        const label = e("text", { x: x(i) + 4, y: H - padBottom + 16, fill: "#8b93a1", "font-size": 11 });
+        svg.appendChild(e("line", { x1: x(i), y1: padTop, x2: x(i), y2: H - padBottom, stroke: GRID, "stroke-width": 1, opacity: 0.6 }));
+        const label = e("text", { x: x(i) + 4, y: H - padBottom + 16, fill: INK, opacity: 0.55, "font-size": 11 });
         label.textContent = monthLabel(projection.dates[i], opts.lang);
         svg.appendChild(label);
       }
@@ -126,10 +133,10 @@
     appendSplitLine(svg, confirmed, x, y, 2);
 
     // ---- 0-line (solid, emphasized) ----
-    svg.appendChild(e("line", { x1: 0, y1: y0, x2: W, y2: y0, stroke: "#e6e8ec", "stroke-width": 1.5, opacity: 0.5 }));
+    svg.appendChild(e("line", { x1: 0, y1: y0, x2: W, y2: y0, stroke: INK, "stroke-width": 1.5, opacity: 0.55 }));
 
     // ---- today marker ----
-    svg.appendChild(e("line", { x1: x(0), y1: padTop, x2: x(0), y2: H - padBottom, stroke: "#e6e8ec", "stroke-width": 1.5, opacity: 0.35 }));
+    svg.appendChild(e("line", { x1: x(0), y1: padTop, x2: x(0), y2: H - padBottom, stroke: INK, "stroke-width": 1.5, opacity: 0.3 }));
 
     // ---- goal markers ----
     (projection.markers || []).forEach((mk) => {
@@ -158,8 +165,8 @@
 
     // ---- hover crosshair ----
     const cross = e("g", { class: "tl-cross", opacity: 0 });
-    const crossLine = e("line", { x1: 0, y1: padTop, x2: 0, y2: H - padBottom, stroke: "#e6e8ec", "stroke-width": 1, opacity: 0.6 });
-    const dotC = e("circle", { r: 4.5, fill: "#cdd9ff", stroke: "#0f1115", "stroke-width": 1.5 });
+    const crossLine = e("line", { x1: 0, y1: padTop, x2: 0, y2: H - padBottom, stroke: INK, "stroke-width": 1, opacity: 0.55 });
+    const dotC = e("circle", { r: 4.5, fill: POS, stroke: SURFACE, "stroke-width": 1.5 });
     cross.appendChild(crossLine); cross.appendChild(dotC);
     svg.appendChild(cross);
 
@@ -264,7 +271,7 @@
     let seg = [], segNeg = pts[0][2] < 0;
     const flush = () => {
       if (seg.length < 2) { seg = seg.slice(-1); return; }
-      svg.appendChild(e("polyline", { points: seg.map((p) => p[0] + "," + p[1]).join(" "), fill: "none", stroke: segNeg ? NEG : "#cdd9ff", "stroke-width": w, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      svg.appendChild(e("polyline", { points: seg.map((p) => p[0] + "," + p[1]).join(" "), fill: "none", stroke: segNeg ? NEG : POS, "stroke-width": w, "stroke-linejoin": "round", "stroke-linecap": "round" }));
       seg = seg.slice(-1);
     };
     for (let i = 0; i < pts.length; i++) {
