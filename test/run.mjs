@@ -98,7 +98,7 @@ function run() {
   // read current state from localStorage
   const stateBefore = JSON.parse(env.store["finance-tracker:v2"]);
   const before = Projection.project(stateBefore, { horizonDays: 730 });
-  const endBefore = before.confirmed[730];
+  const endBefore = before.combined.confirmed[730];
 
   // find the biggest income item and uncheck it via the UI
   const bigIncome = stateBefore.items.filter((i) => i.kind === "income").sort((a, b) => b.amount - a.amount)[0];
@@ -117,7 +117,7 @@ function run() {
 
   const stateAfter = JSON.parse(env.store["finance-tracker:v2"]);
   const after = Projection.project(stateAfter, { horizonDays: 730 });
-  const endAfter = after.confirmed[730];
+  const endAfter = after.combined.confirmed[730];
   ok("graph projection dropped after unchecking income", endAfter < endBefore - 1,
     "before=" + endBefore + " after=" + endAfter);
   const toggledItem = stateAfter.items.find((i) => i.name === bigIncome.name);
@@ -127,7 +127,7 @@ function run() {
   console.log("\nTest 4: goal markers");
   ok("goal markers exist in series", after.markers.length >= 1, "got " + after.markers.length);
   const mk = after.markers[0];
-  ok("marker has pct and x/x fields", typeof mk.pct === "number" && typeof mk.toward === "number" && typeof mk.target === "number",
+  ok("marker has pct + EUR x/x + per-currency", typeof mk.pct === "number" && typeof mk.towardEUR === "number" && typeof mk.targetEUR === "number" && typeof mk.perCur === "object",
     JSON.stringify(mk));
 
   // ---- Test 5: 'bought' goal creates an expense dip ----
@@ -149,8 +149,11 @@ function run() {
   const gbEvent = boughtSeries.events.find((e) => e.type === "goalbought" && e.label === g0name);
   ok("bought goal appears as expense event on timeline", !!gbEvent, gbEvent && gbEvent.amount);
   const gIdx = boughtSeries.markers.find((m) => m.name === g0name).dateIndex;
-  const dip = boughtSeries.confirmed[gIdx - 1] - boughtSeries.confirmed[gIdx];
-  ok("balance dips at the bought goal's date", dip >= gb.target - 0.01, "dip=" + dip + " target=" + gb.target);
+  // Combined EUR-equivalent dip should equal the EUR-equiv of the goal's splits.
+  const rates = boughtSeries.rates;
+  const splitEUR = Object.keys(gb.splits).reduce((s, c) => s + (gb.splits[c] || 0) * (rates[c] || 0), 0);
+  const dip = boughtSeries.combined.confirmed[gIdx - 1] - boughtSeries.combined.confirmed[gIdx];
+  ok("combined balance dips by the goal's EUR-equivalent", Math.abs(dip - splitEUR) < 0.5, "dip=" + dip + " splitEUR=" + splitEUR);
 
   // ---- Test 6: resilience to malformed stored state ----
   console.log("\nTest 6: malformed state does not crash");
@@ -240,14 +243,18 @@ function run() {
   ok("recurring item repeats (>12 occurrences over 2y)", recCount > 12, recurringItem.name + "=" + recCount);
   ok("one-time item occurs exactly once", onceCount === 1, onceItem.name + "=" + onceCount);
 
-  // ---- Test 11: accounts drive starting balance ----
+  // ---- Test 11: accounts drive starting balance (EUR-equivalent) ----
   console.log("\nTest 11: accounts = starting balance");
   const st11 = JSON.parse(env5.store["finance-tracker:v2"]);
-  const sumAcc = st11.accounts.reduce((a, b) => a + (parseFloat(b.balance) || 0), 0);
   const s11 = env5.win.Projection.project(st11, { horizonDays: 730 });
-  ok("starting balance equals sum of accounts", Math.abs(s11.startingBalance - sumAcc) < 0.001,
-    "startingBalance=" + s11.startingBalance + " sumAcc=" + sumAcc);
-  ok("day-0 confirmed equals starting balance", Math.abs(s11.confirmed[0] - sumAcc) < 0.001);
+  const rates11 = s11.rates;
+  const sumAccEUR = st11.accounts.reduce((a, b) => a + (parseFloat(b.balance) || 0) * (rates11[b.currency] || 1), 0);
+  ok("combined starting balance = EUR-equiv sum of accounts", Math.abs(s11.combined.startingBalance - sumAccEUR) < 0.5,
+    "combined=" + s11.combined.startingBalance + " sumAccEUR=" + sumAccEUR);
+  ok("combined day-0 equals starting balance", Math.abs(s11.combined.confirmed[0] - s11.combined.startingBalance) < 0.5);
+  // per-currency start balances
+  const eurAcc = st11.accounts.filter((a) => a.currency === "EUR").reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
+  ok("EUR native start = sum of EUR accounts", Math.abs(s11.byCur.EUR.start - eurAcc) < 0.001, s11.byCur.EUR.start + " vs " + eurAcc);
 
   // ---- Test 12: pay-later expense shifts 30 days ----
   console.log("\nTest 12: pay-later shift");
@@ -273,8 +280,8 @@ function run() {
   ok("normal expense applies at day 10", normalEv && normalEv.dateIndex === 10, normalEv && normalEv.dateIndex);
   ok("pay-later expense applies at day 40 (10 + 30)", laterEv && laterEv.dateIndex === 40, laterEv && laterEv.dateIndex);
   // balance should NOT drop at day 10 for the later one, only the normal 100
-  const dropAt10 = sp.confirmed[9] - sp.confirmed[10];
-  const dropAt40 = sp.confirmed[39] - sp.confirmed[40];
+  const dropAt10 = sp.combined.confirmed[9] - sp.combined.confirmed[10];
+  const dropAt40 = sp.combined.confirmed[39] - sp.combined.confirmed[40];
   ok("day-10 drop is only the normal expense (100)", Math.abs(dropAt10 - 100) < 0.01, "drop=" + dropAt10);
   ok("day-40 drop is the pay-later expense (100)", Math.abs(dropAt40 - 100) < 0.01, "drop=" + dropAt40);
   // pay-later only affects expenses: income with payLater flag should NOT shift
@@ -299,6 +306,75 @@ function run() {
   const stM = JSON.parse(envM.store["finance-tracker:v2"]);
   const savedM = stM.items.find((i) => i.name === "BNPL thing");
   ok("item saved with payLater=true", savedM && savedM.payLater === true, JSON.stringify(savedM));
+
+  // ---- Test 14: multi-currency conversion into combined EUR ----
+  console.log("\nTest 14: currency conversion");
+  const envC = buildEnv();
+  load(envC.ctx, "i18n.js"); load(envC.ctx, "store.js"); load(envC.ctx, "projection.js"); load(envC.ctx, "chart.js"); load(envC.ctx, "app.js");
+  const ProjC = envC.win.Projection;
+  const stC = {
+    rates: { EUR: 1, USD: 0.5, CNY: 0.1 },
+    accounts: [
+      { id: "1", name: "e", balance: 100, currency: "EUR" },
+      { id: "2", name: "u", balance: 100, currency: "USD" },
+      { id: "3", name: "c", balance: 100, currency: "CNY" },
+    ],
+    items: [], goals: [],
+  };
+  const sc = ProjC.project(stC, { horizonDays: 10 });
+  ok("per-currency starts kept native (EUR100/USD100/CNY100)",
+    sc.byCur.EUR.start === 100 && sc.byCur.USD.start === 100 && sc.byCur.CNY.start === 100);
+  // combined = 100*1 + 100*0.5 + 100*0.1 = 160
+  ok("combined EUR-equiv uses the rates (100+50+10=160)", Math.abs(sc.combined.startingBalance - 160) < 0.001,
+    "combined=" + sc.combined.startingBalance);
+
+  // ---- Test 15: filter isolates a currency in the chart ----
+  console.log("\nTest 15: currency filter in chart");
+  // default render is ALL → clicking a filter button re-renders with that currency
+  const fbtns = envC.view.querySelectorAll(".tl-fbtn");
+  ok("filter buttons rendered (All + 3 currencies)", fbtns.length === 4, "got " + fbtns.length);
+  // click "USD" (3rd button: All, EUR, USD, CNY)
+  const usdBtn = fbtns.find((b) => b.textContent.includes("USD"));
+  ok("found USD filter button", !!usdBtn);
+  if (usdBtn) {
+    usdBtn.dispatch("click", { target: usdBtn });
+    const activeBtn = envC.view.querySelectorAll(".tl-fbtn.active").find((b) => b.textContent.includes("USD"));
+    ok("USD filter becomes active after click", !!activeBtn);
+  }
+
+  // ---- Test 16: goal split fulfillment + bought removes per-currency ----
+  console.log("\nTest 16: goal currency split");
+  const envG = buildEnv();
+  load(envG.ctx, "i18n.js"); load(envG.ctx, "store.js"); load(envG.ctx, "projection.js"); load(envG.ctx, "chart.js"); load(envG.ctx, "app.js");
+  const ProjG = envG.win.Projection;
+  const d100 = envG.win.Store.isoAddDays(100);
+  const stG = {
+    rates: { EUR: 1, USD: 0.9, CNY: 0.1 },
+    accounts: [
+      { id: "1", name: "e", balance: 500, currency: "EUR" },
+      { id: "2", name: "u", balance: 200, currency: "USD" },
+      { id: "3", name: "c", balance: 3000, currency: "CNY" },
+    ],
+    items: [],
+    goals: [{ id: "g", name: "Split goal", splits: { EUR: 1000, USD: 100, CNY: 2000 }, date: d100, bought: false, included: true }],
+  };
+  const sg = ProjG.project(stG, { horizonDays: 200 });
+  const m = sg.markers.find((x) => x.name === "Split goal");
+  ok("marker has per-currency fulfillment", m && m.perCur.EUR && m.perCur.USD && m.perCur.CNY);
+  // EUR: have 500 / need 1000 → 50%; USD: 200/100 → 100%; CNY: 3000/2000 → 100%
+  ok("EUR fulfillment 50%", m.perCur.EUR.pct === 50, "EUR pct=" + m.perCur.EUR.pct);
+  ok("USD fulfillment 100%", m.perCur.USD.pct === 100, "USD pct=" + m.perCur.USD.pct);
+  ok("CNY fulfillment 100%", m.perCur.CNY.pct === 100, "CNY pct=" + m.perCur.CNY.pct);
+  // bought → each currency pool drops by its split at the goal date
+  stG.goals[0].bought = true;
+  const sgb = ProjG.project(stG, { horizonDays: 200 });
+  const i100 = sgb.markers.find((x) => x.name === "Split goal").dateIndex;
+  const dEUR = sgb.byCur.EUR.confirmed[i100 - 1] - sgb.byCur.EUR.confirmed[i100];
+  const dUSD = sgb.byCur.USD.confirmed[i100 - 1] - sgb.byCur.USD.confirmed[i100];
+  const dCNY = sgb.byCur.CNY.confirmed[i100 - 1] - sgb.byCur.CNY.confirmed[i100];
+  ok("bought removes EUR split (1000)", Math.abs(dEUR - 1000) < 0.01, "dEUR=" + dEUR);
+  ok("bought removes USD split (100)", Math.abs(dUSD - 100) < 0.01, "dUSD=" + dUSD);
+  ok("bought removes CNY split (2000)", Math.abs(dCNY - 2000) < 0.01, "dCNY=" + dCNY);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

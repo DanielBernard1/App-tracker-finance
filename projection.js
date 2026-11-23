@@ -56,86 +56,138 @@
     return out;
   }
 
-  // Returns { dates, confirmed, optimistic, events, markers, startingBalance, horizonDays, start }
+  const CURRENCIES = ["EUR", "USD", "CNY"];
+  const PAY_LATER_DAYS = 30;
+
+  // Produce a projection with PER-CURRENCY native series plus an EUR-equivalent
+  // combined series.
+  //
+  // Returns {
+  //   dates, horizonDays, start,
+  //   byCur: { EUR:{confirmed,optimistic,start}, USD:{...}, CNY:{...} },  // native units
+  //   combined: { confirmed, optimistic, startingBalance },               // EUR-equivalent
+  //   events,          // each has .currency and .amount (native)
+  //   markers,         // goal markers with per-currency fulfillment
+  //   rates
+  // }
   function project(state, opts) {
     opts = opts || {};
     const horizonDays = opts.horizonDays || 730;
     const start = opts.startISO || todayISO();
+    const rates = Object.assign({ EUR: 1, USD: 0.92, CNY: 0.13 }, state.rates || {});
+    rates.EUR = 1;
 
-    const startingBalance = (state.accounts || []).reduce((s, a) => s + num(a.balance), 0);
+    // Per-currency delta arrays.
+    const cDelta = {}, oDelta = {}, startBal = {};
+    CURRENCIES.forEach((c) => {
+      cDelta[c] = new Array(horizonDays + 1).fill(0);
+      oDelta[c] = new Array(horizonDays + 1).fill(0);
+      startBal[c] = 0;
+    });
 
-    const confirmedDelta = new Array(horizonDays + 1).fill(0);
-    const optimisticDelta = new Array(horizonDays + 1).fill(0);
+    // Starting balances by currency (from accounts).
+    (state.accounts || []).forEach((a) => {
+      const cur = CURRENCIES.includes(a.currency) ? a.currency : "EUR";
+      startBal[cur] += num(a.balance);
+    });
+
     const events = [];
 
-    function applyOn(dateISO, amount, potential, meta) {
+    function applyOn(cur, dateISO, amount, potential, meta) {
       const idx = daysBetween(start, dateISO);
       if (idx < 0 || idx > horizonDays) return;
       if (potential) {
-        optimisticDelta[idx] += amount; // potential income only lifts the optimistic line
+        oDelta[cur][idx] += amount;
       } else {
-        confirmedDelta[idx] += amount;
-        optimisticDelta[idx] += amount; // confirmed also flows into optimistic
+        cDelta[cur][idx] += amount;
+        oDelta[cur][idx] += amount;
       }
-      if (meta) events.push(Object.assign({ dateIndex: idx, amount }, meta));
+      if (meta) events.push(Object.assign({ dateIndex: idx, amount, currency: cur }, meta));
     }
 
-    const PAY_LATER_DAYS = 30;
     (state.items || []).forEach((it) => {
       if (it.included === false) return;
+      const cur = CURRENCIES.includes(it.currency) ? it.currency : "EUR";
       const signed = (it.kind === "expense" ? -1 : 1) * num(it.amount);
       const type = it.kind === "expense" ? "expense" : (it.potential ? "expected" : "income");
-      // Pay-later only applies to expenses: the money leaves 30 days after the date.
       const payLater = !!it.payLater && it.kind === "expense";
       const shift = (dateISO) => payLater ? isoAddDays(dateISO, PAY_LATER_DAYS) : dateISO;
       const meta = { type, label: it.name, category: it.category, payLater };
       if (it.recurring) {
-        // Each monthly occurrence is computed on the item's own date, then shifted.
         monthlyDates(it.date || start, start, horizonDays + PAY_LATER_DAYS).forEach((d) => {
-          applyOn(shift(d), signed, !!it.potential, meta);
+          applyOn(cur, shift(d), signed, !!it.potential, meta);
         });
       } else {
-        applyOn(shift(it.date || start), signed, !!it.potential, meta);
+        applyOn(cur, shift(it.date || start), signed, !!it.potential, meta);
       }
     });
 
-    // Bought goals = one-time expense dip at the goal's date.
+    // Bought goals = per-currency expense dips at the goal's date.
     (state.goals || []).forEach((g) => {
       if (g.bought && g.included !== false) {
-        applyOn(g.date || start, -num(g.target), false, { type: "goalbought", label: g.name });
+        const splits = g.splits || {};
+        CURRENCIES.forEach((c) => {
+          const amt = num(splits[c]);
+          if (amt > 0) applyOn(c, g.date || start, -amt, false, { type: "goalbought", label: g.name });
+        });
       }
     });
 
-    // Accumulate running balances.
-    const dates = [], confirmed = [], optimistic = [];
-    let c = startingBalance, o = startingBalance;
+    // Accumulate per-currency running balances (native units).
+    const dates = [];
+    const byCur = {};
+    CURRENCIES.forEach((c) => { byCur[c] = { confirmed: [], optimistic: [], start: startBal[c] }; });
+    const run = {}; CURRENCIES.forEach((c) => { run[c] = { c: startBal[c], o: startBal[c] }; });
+
     for (let i = 0; i <= horizonDays; i++) {
-      c += confirmedDelta[i];
-      o += optimisticDelta[i];
       dates.push(isoAddDays(start, i));
-      confirmed.push(Math.round(c * 100) / 100);
-      optimistic.push(Math.round(o * 100) / 100);
+      CURRENCIES.forEach((c) => {
+        run[c].c += cDelta[c][i];
+        run[c].o += oDelta[c][i];
+        byCur[c].confirmed.push(Math.round(run[c].c * 100) / 100);
+        byCur[c].optimistic.push(Math.round(run[c].o * 100) / 100);
+      });
     }
 
-    // Goal markers: position + fulfillment (balance at that date / target).
+    // Combined EUR-equivalent series = rate-weighted sum across currencies.
+    const combined = { confirmed: [], optimistic: [], startingBalance: 0 };
+    CURRENCIES.forEach((c) => { combined.startingBalance += startBal[c] * rates[c]; });
+    combined.startingBalance = Math.round(combined.startingBalance * 100) / 100;
+    for (let i = 0; i <= horizonDays; i++) {
+      let cc = 0, oo = 0;
+      CURRENCIES.forEach((c) => { cc += byCur[c].confirmed[i] * rates[c]; oo += byCur[c].optimistic[i] * rates[c]; });
+      combined.confirmed.push(Math.round(cc * 100) / 100);
+      combined.optimistic.push(Math.round(oo * 100) / 100);
+    }
+
+    // Goal markers: per-currency fulfillment at the goal's date.
     const markers = [];
     (state.goals || []).forEach((g) => {
-      if (g.included === false) return;
-      if (!g.date) return;
+      if (g.included === false || !g.date) return;
       const idx = daysBetween(start, g.date);
       if (idx < 0 || idx > horizonDays) return;
-      const balance = confirmed[idx];
-      const target = num(g.target);
-      const toward = Math.max(0, balance); // money available toward the goal
-      const pct = target > 0 ? Math.min(100, Math.round((toward / target) * 100)) : 0;
-      markers.push({
-        dateIndex: idx, name: g.name, target,
-        balance, toward, pct, bought: !!g.bought,
+      const splits = g.splits || {};
+      const perCur = {};
+      let targetEUR = 0, towardEUR = 0;
+      CURRENCIES.forEach((c) => {
+        const target = num(splits[c]);
+        if (target <= 0) return;
+        const bal = byCur[c].confirmed[idx];
+        const toward = Math.max(0, bal);
+        perCur[c] = {
+          target, balance: bal,
+          toward: Math.min(toward, target),
+          pct: Math.min(100, Math.round((Math.max(0, bal) / target) * 100)),
+        };
+        targetEUR += target * rates[c];
+        towardEUR += Math.min(Math.max(0, bal), target) * rates[c];
       });
+      const pct = targetEUR > 0 ? Math.min(100, Math.round((towardEUR / targetEUR) * 100)) : 0;
+      markers.push({ dateIndex: idx, name: g.name, perCur, targetEUR, towardEUR, pct, bought: !!g.bought });
     });
 
-    return { dates, confirmed, optimistic, events, markers, startingBalance, horizonDays, start };
+    return { dates, horizonDays, start, byCur, combined, events, markers, rates, currencies: CURRENCIES };
   }
 
-  window.Projection = { project, todayISO, isoAddDays, daysBetween };
+  window.Projection = { project, todayISO, isoAddDays, daysBetween, CURRENCIES };
 })();

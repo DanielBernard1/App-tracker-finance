@@ -11,16 +11,20 @@
   const view = document.getElementById("view");
   const modalRoot = document.getElementById("modal-root");
 
-  const CURRENCIES = ["EUR", "USD"];
+  const CURRENCIES = window.Store.CURRENCIES; // ["EUR","USD","CNY"]
+  const SYMBOLS = window.Store.SYMBOLS;
+  let chartFilter = "ALL"; // ALL | EUR | USD | CNY
 
   // ---------- helpers ----------
   function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
-  function money(amount) {
+  // Format an amount in a specific currency (native units).
+  function money(amount, currency) {
+    const cur = currency && CURRENCIES.includes(currency) ? currency : "EUR";
     const locale = state.lang === "zh" ? "zh-CN" : "en-US";
     try {
-      return new Intl.NumberFormat(locale, { style: "currency", currency: state.baseCurrency, maximumFractionDigits: 2 }).format(amount || 0);
-    } catch (e) { return (state.baseCurrency === "USD" ? "$" : "€") + (amount || 0).toFixed(2); }
+      return new Intl.NumberFormat(locale, { style: "currency", currency: cur, maximumFractionDigits: 2 }).format(amount || 0);
+    } catch (e) { return (SYMBOLS[cur] || "") + (amount || 0).toFixed(2); }
   }
 
   function fmtDate(iso) {
@@ -82,24 +86,47 @@
       <div class="legend">
         <span class="lg"><i class="sw sw-confirmed"></i>${esc(t("legConfirmed"))}</span>
         <span class="lg"><i class="sw sw-optimistic"></i>${esc(t("legOptimistic"))}</span>
+        <span class="lg"><i class="sw sw-neg"></i>${esc(t("legNegative"))}</span>
         <span class="lg"><i class="dot dot-goal"></i>${esc(t("legGoal"))}</span>
         <span class="lg"><i class="dot dot-pay"></i>${esc(t("legBought"))}</span>
       </div>`));
 
+    this_lastSeries = series;
     requestAnimationFrame(() => {
-      window.Chart.render(host, series, (v) => money(v), (iso) => fmtDate(iso), state.lang,
-        { guaranteed: t("legConfirmed"), potential: t("legOptimistic") },
-        (mk, cx, cy) => showMarkerPopover(mk, cx, cy));
+      window.Chart.render(host, series, {
+        filter: chartFilter,
+        fmt: (v, cur) => money(v, cur === "EUR-equiv" ? "EUR" : cur),
+        fmtDate: (iso) => fmtDate(iso),
+        lang: state.lang,
+        labels: { guaranteed: t("legConfirmed"), potential: t("legOptimistic"), all: t("filterAll") },
+        symbols: SYMBOLS,
+        fixedAxis: { hi: 15000, lo: -5000 },
+        onMarkerClick: (mk, cx, cy) => showMarkerPopover(mk, cx, cy),
+        onFilterChange: (f) => { chartFilter = f; render(); },
+      });
     });
   }
 
+  let this_lastSeries = null;
+
   function showMarkerPopover(mk, clientX, clientY) {
+    // Per-currency fulfillment rows.
+    let rows = "";
+    CURRENCIES.forEach((c) => {
+      const pc = mk.perCur[c];
+      if (!pc) return;
+      rows += `<div class="mp-row"><span class="mp-row-cur">${esc(SYMBOLS[c])} ${c}</span>`
+        + `<span class="mp-row-pct">${pc.pct}%</span></div>`
+        + `<div class="mp-row-sub">${esc(money(pc.toward, c))} / ${esc(money(pc.target, c))}</div>`;
+    });
+    const dateISO = this_lastSeries ? this_lastSeries.dates[mk.dateIndex] : "";
     const pop = el(`
       <div class="marker-pop">
         <div class="mp-name">${esc(mk.name)}</div>
         <div class="mp-pct">${mk.pct}%</div>
-        <div class="mp-frac">${esc(money(mk.toward))} / ${esc(money(mk.target))}</div>
-        <div class="mp-sub">${esc(t("byDate"))} · ${esc(fmtDate(series_dateFor(mk)))}</div>
+        <div class="mp-frac">${esc(money(mk.towardEUR, "EUR"))} / ${esc(money(mk.targetEUR, "EUR"))} <span class="mp-eq">${esc(t("eurEquiv"))}</span></div>
+        <div class="mp-splits">${rows}</div>
+        <div class="mp-sub">${esc(t("byDate"))} · ${esc(fmtDate(dateISO))}</div>
         ${mk.bought ? `<div class="mp-sub mp-bought">${esc(t("boughtFlag"))}</div>` : ""}
       </div>`);
     const back = el('<div class="pop-backdrop"></div>');
@@ -107,16 +134,10 @@
     back.appendChild(pop);
     modalRoot.innerHTML = "";
     modalRoot.appendChild(back);
-    // position near click, clamped
-    const w = 180;
+    const w = 200;
     let left = Math.min(Math.max(8, clientX - w / 2), window.innerWidth - w - 8);
     pop.style.left = left + "px";
     pop.style.top = Math.max(60, clientY + 14) + "px";
-  }
-
-  function series_dateFor(mk) {
-    const s = window.Projection.project(state, { horizonDays: 730 });
-    return s.dates[mk.dateIndex];
   }
 
   // ----- columns -----
@@ -147,8 +168,11 @@
     accBtn.addEventListener("click", openAccountsModal);
     const catBtn = el(`<button class="btn ghost sm">${esc(t("editCategories"))}</button>`);
     catBtn.addEventListener("click", openCategoriesModal);
+    const rateBtn = el(`<button class="btn ghost sm">${esc(t("editRates"))}</button>`);
+    rateBtn.addEventListener("click", openRatesModal);
     actions.appendChild(accBtn);
     actions.appendChild(catBtn);
+    actions.appendChild(rateBtn);
     view.appendChild(actions);
   }
 
@@ -173,7 +197,7 @@
           <span class="row-title">${esc(it.name)} ${it.potential ? `<span class="chip">${esc(t("potentialTag"))}</span>` : ""} ${it.payLater && it.kind === "expense" ? `<span class="chip warn">${esc(t("payLaterTag"))}</span>` : ""} ${it.recurring ? `<span class="chip muted">↻</span>` : ""}</span>
           <span class="row-sub">${esc(fmtDate(it.date))} · ${esc(it.category || "")}</span>
         </div>
-        <span class="row-amount ${amtCls}">${sign}${esc(money(num(it.amount)))}</span>
+        <span class="row-amount ${amtCls}">${sign}${esc(money(num(it.amount), it.currency))}</span>
       </div>`);
     const cb = row.querySelector('input[type="checkbox"]');
     if (cb) cb.addEventListener("change", (e) => { it.included = e.target.checked; persist(); render(); });
@@ -182,6 +206,12 @@
     const amt = row.querySelector(".row-amount");
     if (amt) amt.addEventListener("click", () => openItemModal(it));
     return row;
+  }
+
+  function goalSplitSummary(g) {
+    const sp = g.splits || {};
+    const parts = CURRENCIES.filter((c) => num(sp[c]) > 0).map((c) => money(num(sp[c]), c));
+    return parts.length ? parts.join(" + ") : money(0, "EUR");
   }
 
   function goalRow(g) {
@@ -193,7 +223,7 @@
         </label>
         <div class="row-main">
           <span class="row-title">${esc(g.name)} ${g.bought ? `<span class="chip warn">${esc(t("boughtTag"))}</span>` : ""}</span>
-          <span class="row-sub">${esc(money(num(g.target)))} · ${esc(fmtDate(g.date))}</span>
+          <span class="row-sub">${esc(goalSplitSummary(g))} · ${esc(fmtDate(g.date))}</span>
         </div>
         <button class="btn ghost xs bought-btn">${g.bought ? esc(t("unbuy")) : esc(t("buy"))}</button>
       </div>`);
@@ -207,7 +237,9 @@
   }
 
   // ---------- modals ----------
-  function currencyNote() { return ""; }
+  function currencyOptions(selected) {
+    return CURRENCIES.map((c) => `<option value="${c}" ${c === selected ? "selected" : ""}>${esc(SYMBOLS[c])} ${c}</option>`).join("");
+  }
 
   function categoryOptions(selected) {
     const cats = state.categories && state.categories.length ? state.categories : ["Other"];
@@ -221,7 +253,10 @@
       <div class="field"><label>${esc(t("name"))}</label><input name="name" type="text" value="${esc(item ? item.name : "")}" placeholder="${esc(t("itemPlaceholder"))}" /></div>
       <div class="field-row">
         <div class="field"><label>${esc(t("amount"))}</label><input name="amount" type="number" inputmode="decimal" step="0.01" value="${esc(item ? item.amount : "")}" placeholder="0.00" /></div>
-        <div class="field" style="flex:0 0 130px"><label>${esc(t("type"))}</label>
+        <div class="field" style="flex:0 0 96px"><label>${esc(t("currency"))}</label>
+          <select name="currency">${currencyOptions(item ? item.currency : "EUR")}</select>
+        </div>
+        <div class="field" style="flex:0 0 120px"><label>${esc(t("type"))}</label>
           <select name="kind">
             <option value="income" ${k === "income" ? "selected" : ""}>${esc(t("income"))}</option>
             <option value="expense" ${k === "expense" ? "selected" : ""}>${esc(t("expense"))}</option>
@@ -241,7 +276,7 @@
       (d) => {
         if (!d.name) return false;
         const payload = {
-          name: d.name, amount: num(d.amount), kind: d.kind, date: d.date,
+          name: d.name, amount: num(d.amount), currency: d.currency, kind: d.kind, date: d.date,
           category: d.category, recurring: !!d.recurring, potential: !!d.potential,
           payLater: !!d.payLater,
         };
@@ -253,10 +288,14 @@
 
   function openGoalModal(goal) {
     const isEdit = !!goal;
+    const sp = (goal && goal.splits) || { EUR: 0, USD: 0, CNY: 0 };
+    const splitInputs = CURRENCIES.map((c) =>
+      `<div class="field"><label>${esc(SYMBOLS[c])} ${c}</label><input name="split_${c}" type="number" inputmode="decimal" step="0.01" value="${esc(sp[c] || "")}" placeholder="0" /></div>`
+    ).join("");
     const fields = `
       <div class="field"><label>${esc(t("name"))}</label><input name="name" type="text" value="${esc(goal ? goal.name : "")}" placeholder="${esc(t("goalPlaceholder"))}" /></div>
+      <div class="field"><label>${esc(t("targetSplit"))}</label><div class="field-row">${splitInputs}</div></div>
       <div class="field-row">
-        <div class="field"><label>${esc(t("target"))}</label><input name="target" type="number" inputmode="decimal" step="0.01" value="${esc(goal ? goal.target : "")}" placeholder="0.00" /></div>
         <div class="field"><label>${esc(t("date"))}</label><input name="date" type="date" value="${esc(goal ? goal.date : todayISO())}" /></div>
       </div>
       <div class="field toggles">
@@ -265,7 +304,10 @@
     openModal(isEdit ? t("editGoal") : t("addGoal"), fields,
       (d) => {
         if (!d.name) return false;
-        const payload = { name: d.name, target: num(d.target), date: d.date, bought: !!d.bought };
+        const splits = {};
+        CURRENCIES.forEach((c) => { splits[c] = num(d["split_" + c]); });
+        if (splits.EUR + splits.USD + splits.CNY <= 0) return false;
+        const payload = { name: d.name, splits, date: d.date, bought: !!d.bought };
         if (goal) Object.assign(goal, payload);
         else state.goals.push(Object.assign({ id: Store.uid(), included: true }, payload));
       },
@@ -359,6 +401,37 @@
       persist(); addForm.cat.value = ""; redraw();
     });
     actions.querySelector("#cat-done").addEventListener("click", () => { closeModal(); render(); });
+    modalRoot.innerHTML = ""; modalRoot.appendChild(backdrop);
+  }
+
+  // Exchange rates editor (manual, into EUR).
+  function openRatesModal() {
+    if (!state.rates) state.rates = { EUR: 1, USD: 0.92, CNY: 0.13 };
+    const rows = CURRENCIES.filter((c) => c !== "EUR").map((c) =>
+      `<div class="field"><label>1 ${esc(SYMBOLS[c])} ${c} = ? € EUR</label><input name="rate_${c}" type="number" inputmode="decimal" step="0.0001" value="${esc(state.rates[c])}" /></div>`
+    ).join("");
+    const backdrop = el('<div class="modal-backdrop"></div>');
+    const modal = el(`
+      <div class="modal">
+        <h2>${esc(t("rates"))}</h2>
+        <p class="row-sub" style="margin:0 0 14px">${esc(t("ratesHint"))}</p>
+        <form id="rate-form">${rows}</form>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="r-cancel">${esc(t("cancel"))}</button>
+          <button type="button" class="btn" id="r-save">${esc(t("save"))}</button>
+        </div>
+      </div>`);
+    backdrop.appendChild(modal);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
+    modal.querySelector("#r-cancel").addEventListener("click", closeModal);
+    modal.querySelector("#r-save").addEventListener("click", () => {
+      CURRENCIES.filter((c) => c !== "EUR").forEach((c) => {
+        const f = modal.querySelector(`[name="rate_${c}"]`);
+        if (f) { const v = num(f.value); if (v > 0) state.rates[c] = v; }
+      });
+      state.rates.EUR = 1;
+      persist(); closeModal(); render();
+    });
     modalRoot.innerHTML = ""; modalRoot.appendChild(backdrop);
   }
 

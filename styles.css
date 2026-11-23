@@ -394,3 +394,36 @@ button {
 
 .goal-marker { cursor: pointer; }
 .goal-flag { cursor: pointer; }
+
+/* ---------- currency filter bar ---------- */
+.tl-filter {
+  display: flex;
+  gap: 6px;
+  padding: 10px 10px 4px;
+  flex-wrap: wrap;
+}
+.tl-fbtn {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.tl-fbtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* negative legend swatch */
+.legend .sw-neg { background: var(--neg); opacity: 0.55; }
+
+/* tooltip currency breakdown */
+.tl-tip-div { height: 1px; background: var(--border); margin: 6px 0; }
+.tl-tip-cur .tl-tip-lbl { font-weight: 700; color: var(--text); width: 16px; }
+
+/* marker popover per-currency splits */
+.mp-eq { font-size: 11px; color: var(--muted); }
+.mp-splits { margin: 8px 0 4px; }
+.mp-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.mp-row-cur { font-size: 13px; color: var(--text); font-weight: 600; }
+.mp-row-pct { font-size: 13px; color: var(--accent); font-weight: 700; }
+.mp-row-sub { font-size: 11px; color: var(--muted); }

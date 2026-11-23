@@ -6,8 +6,12 @@ window.I18N = {
     // Legend
     legConfirmed: "Guaranteed",
     legOptimistic: "+ Potential",
+    legNegative: "Negative",
     legGoal: "Goal",
     legBought: "Bought",
+    filterAll: "All",
+    targetSplit: "Target (split by currency)",
+    eurEquiv: "EUR equiv.",
 
     // Columns
     colItems: "Income / Expenses",
@@ -55,6 +59,9 @@ window.I18N = {
     // Categories
     editCategories: "Categories",
     categories: "Categories",
+    editRates: "Rates",
+    rates: "Exchange rates",
+    ratesHint: "Manual rates into EUR (visual only, keeps the graph proportional).",
     newCategory: "New category",
     addCategory: "Add category",
     noCategories: "No categories yet.",
@@ -84,8 +91,12 @@ window.I18N = {
 
     legConfirmed: "确定",
     legOptimistic: "+ 潜在",
+    legNegative: "负值",
     legGoal: "目标",
     legBought: "已购买",
+    filterAll: "全部",
+    targetSplit: "目标（按货币分配）",
+    eurEquiv: "欧元等值",
 
     colItems: "收入 / 支出",
     colGoals: "目标",
@@ -127,6 +138,9 @@ window.I18N = {
 
     editCategories: "类别",
     categories: "类别",
+    editRates: "汇率",
+    rates: "汇率",
+    ratesHint: "手动设置兑欧元汇率（仅用于显示，使图表比例合理）。",
     newCategory: "新类别",
     addCategory: "添加类别",
     noCategories: "还没有类别。",

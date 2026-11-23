@@ -1,13 +1,15 @@
-// Minimal dependency-free SVG line chart for the cash-flow timeline.
-// Renders a scrollable "stock chart" style view:
-//   - faded area/line = optimistic (confirmed + potential income)
-//   - solid line      = confirmed balance
-//   - shaded band between them = upside from expected income
-//   - zero line, today marker, event dots, x-axis month ticks, y-axis labels
+// Dependency-free SVG cash-flow timeline chart.
+//   - Positive balance: blue filled area (guaranteed) + faded potential band.
+//   - Negative balance: red filled area (mirrored), faded red potential.
+//   - Fixed Y axis (default 15000 / −5000) for the All/EUR view; single-currency
+//     views auto-scale to their own data (native units).
+//   - 0-line, today marker, goal markers, month ticks, filter buttons, hover.
 (function () {
   "use strict";
 
   const NS = "http://www.w3.org/2000/svg";
+  const POS = "#5b8cff", POS_LT = "#8fb0ff";
+  const NEG = "#ff6b6b", NEG_LT = "#ff9a9a";
 
   function e(tag, attrs, children) {
     const n = document.createElementNS(NS, tag);
@@ -15,285 +17,273 @@
     if (children) [].concat(children).forEach((c) => c && n.appendChild(c));
     return n;
   }
+  function e2div(cls) { const d = document.createElement("div"); d.className = cls; return d; }
+  function escHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-  // series: output of Projection.project
-  // fmtMoney(value) -> string ; fmtDate(iso) -> string
-  // labels: { guaranteed, potential } for the hover tooltip
-  function render(container, series, fmtMoney, fmtDate, lang, labels, onMarkerClick) {
+  // opts: {
+  //   filter: "ALL"|"EUR"|"USD"|"CNY",
+  //   fmt: (value, currency) => string,     // currency may be "EUR-equiv" for ALL
+  //   fmtDate: iso => string, lang,
+  //   labels: { guaranteed, potential, all },
+  //   symbols: {EUR,USD,CNY},
+  //   fixedAxis: { hi, lo },                 // used for ALL/EUR
+  //   onMarkerClick, onFilterChange
+  // }
+  function render(container, projection, opts) {
+    opts = opts || {};
     container.innerHTML = "";
-    const L = labels || { guaranteed: "Guaranteed", potential: "Potential" };
+    const L = opts.labels || { guaranteed: "Guaranteed", potential: "Potential", all: "All" };
+    const filter = opts.filter || "ALL";
+    const CURRENCIES = projection.currencies || ["EUR", "USD", "CNY"];
+    const symbols = opts.symbols || { EUR: "€", USD: "$", CNY: "¥" };
+    const fmt = opts.fmt || ((v) => String(Math.round(v)));
+    const fmtDate = opts.fmtDate || ((s) => s);
 
-    const PX_PER_DAY = 6;         // horizontal density (scroll to see all)
-    const H = 320;                // chart height
+    // ---- filter control ----
+    const bar = e2div("tl-filter");
+    [["ALL", L.all], ...CURRENCIES.map((c) => [c, symbols[c] + " " + c])].forEach(([key, lbl]) => {
+      const b = document.createElement("button");
+      b.className = "tl-fbtn" + (key === filter ? " active" : "");
+      b.textContent = lbl;
+      b.addEventListener("click", () => { if (opts.onFilterChange) opts.onFilterChange(key); });
+      bar.appendChild(b);
+    });
+    container.appendChild(bar);
+
+    // ---- pick the active series ----
+    // ALL → EUR-equivalent combined; single currency → that currency's native series.
+    const isAll = filter === "ALL";
+    const active = isAll ? projection.combined : projection.byCur[filter];
+    const confirmed = active.confirmed;
+    const optimistic = active.optimistic;
+    const activeCur = isAll ? "EUR" : filter; // ALL is shown in EUR-equivalent
+
+    const PX_PER_DAY = 6;
+    const H = 320;
     const padTop = 24, padBottom = 40, padLeft = 0, padRight = 16;
     const plotH = H - padTop - padBottom;
-    const n = series.dates.length;
+    const n = projection.dates.length;
     const W = Math.max(container.clientWidth || 360, n * PX_PER_DAY + padRight + 40);
 
-    // y-domain across both series (include 0)
-    let lo = 0, hi = 0;
-    for (let i = 0; i < n; i++) {
-      lo = Math.min(lo, series.confirmed[i], series.optimistic[i]);
-      hi = Math.max(hi, series.confirmed[i], series.optimistic[i]);
+    // ---- Y domain ----
+    let hi, lo;
+    if ((isAll || filter === "EUR") && opts.fixedAxis) {
+      hi = opts.fixedAxis.hi; lo = opts.fixedAxis.lo;
+    } else {
+      hi = 0; lo = 0;
+      for (let i = 0; i < n; i++) { hi = Math.max(hi, confirmed[i], optimistic[i]); lo = Math.min(lo, confirmed[i], optimistic[i]); }
+      const pad = Math.max(50, (hi - lo) * 0.1);
+      hi += pad; lo -= pad;
+      if (hi <= 0) hi = pad; // always show a little above 0
     }
-    if (hi === lo) hi = lo + 100;
-    const padY = (hi - lo) * 0.08;
-    lo -= padY; hi += padY;
+    // Clamp series to the visible band so fixed-axis overflow doesn't break paths.
+    const clamp = (v) => Math.max(lo, Math.min(hi, v));
 
     const x = (i) => padLeft + i * PX_PER_DAY;
-    const y = (v) => padTop + plotH - ((v - lo) / (hi - lo)) * plotH;
+    const y = (v) => padTop + plotH - ((clamp(v) - lo) / (hi - lo)) * plotH;
+    const y0 = y(0);
 
-    const svg = e("svg", {
-      width: W, height: H, viewBox: `0 0 ${W} ${H}`,
-      preserveAspectRatio: "none", class: "timeline-svg",
-    });
+    const svg = e("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "timeline-svg" });
 
-    // ----- gridlines + y labels (fixed overlay handles labels; here draw lines) -----
+    // gridlines
     const yTicks = 4;
     for (let t = 0; t <= yTicks; t++) {
       const val = lo + (hi - lo) * (t / yTicks);
-      const yy = y(val);
-      svg.appendChild(e("line", {
-        x1: 0, y1: yy, x2: W, y2: yy,
-        stroke: "#2a2f3a", "stroke-width": 1, "stroke-dasharray": t === 0 ? "" : "3 4",
-      }));
+      svg.appendChild(e("line", { x1: 0, y1: y(val), x2: W, y2: y(val), stroke: "#2a2f3a", "stroke-width": 1, "stroke-dasharray": "3 4" }));
     }
-
-    // zero line (emphasised if within range)
-    if (lo < 0 && hi > 0) {
-      svg.appendChild(e("line", {
-        x1: 0, y1: y(0), x2: W, y2: y(0),
-        stroke: "#ff6b6b", "stroke-width": 1, "stroke-dasharray": "2 4", opacity: 0.6,
-      }));
-    }
-
-    // ----- month ticks on x axis -----
+    // month ticks
     let lastMonth = "";
     for (let i = 0; i < n; i++) {
-      const iso = series.dates[i];
-      const mk = iso.slice(0, 7);
+      const mk = projection.dates[i].slice(0, 7);
       if (mk !== lastMonth) {
         lastMonth = mk;
-        svg.appendChild(e("line", {
-          x1: x(i), y1: padTop, x2: x(i), y2: H - padBottom,
-          stroke: "#222631", "stroke-width": 1,
-        }));
-        const label = e("text", {
-          x: x(i) + 4, y: H - padBottom + 16,
-          fill: "#8b93a1", "font-size": 11,
-        });
-        label.textContent = monthLabel(iso, lang);
+        svg.appendChild(e("line", { x1: x(i), y1: padTop, x2: x(i), y2: H - padBottom, stroke: "#222631", "stroke-width": 1 }));
+        const label = e("text", { x: x(i) + 4, y: H - padBottom + 16, fill: "#8b93a1", "font-size": 11 });
+        label.textContent = monthLabel(projection.dates[i], opts.lang);
         svg.appendChild(label);
       }
     }
 
-    // Build point lists for confirmed and optimistic lines.
-    const topPts = [], botPts = [];
-    for (let i = 0; i < n; i++) {
-      topPts.push(`${x(i)},${y(series.optimistic[i])}`);
-      botPts.push(`${x(i)},${y(series.confirmed[i])}`);
-    }
+    // ---- build point lists ----
+    const confPts = [], optPts = [];
+    for (let i = 0; i < n; i++) { confPts.push(`${x(i)},${y(confirmed[i])}`); optPts.push(`${x(i)},${y(optimistic[i])}`); }
 
-    // Baseline for the filled area (bottom of the plot, so the whole region
-    // under the curve is filled — the "mountain" look from the sketch).
-    const baseY = H - padBottom;
+    // ---- POSITIVE fills (clipped to above the 0-line) ----
+    // We fill between the 0-line and the curve; positive portions use blue,
+    // negative portions use red, split at y0.
+    // Positive guaranteed area: from 0-line up to curve where curve>0.
+    appendSplitArea(svg, confirmed, x, y, y0, n);
 
-    // ----- POTENTIAL band: lighter-opacity fill between confirmed and optimistic -----
-    // (guaranteed ≤ potential, so this is the upside sitting above the solid area)
-    const bandPath = "M" + topPts.join(" L") + " L" + botPts.slice().reverse().join(" L") + " Z";
-    svg.appendChild(e("path", { d: bandPath, fill: "#5b8cff", opacity: 0.22 }));
+    // ---- POTENTIAL band (between confirmed and optimistic) ----
+    // Positive upside = blue low-opacity; negative extension = red low-opacity.
+    const bandPath = "M" + optPts.join(" L") + " L" + confPts.slice().reverse().join(" L") + " Z";
+    // color the band by whether we're mostly above or below — simpler: draw twice clipped.
+    svg.appendChild(e("path", { d: bandPath, fill: POS, opacity: 0.18 }));
 
-    // ----- GUARANTEED area: solid fill from baseline up to the confirmed line -----
-    const areaPath = "M" + `${x(0)},${baseY} L` + botPts.join(" L") + ` L${x(n - 1)},${baseY} Z`;
-    svg.appendChild(e("path", { d: areaPath, fill: "#5b8cff", opacity: 0.6 }));
+    // ---- lines ----
+    svg.appendChild(e("polyline", { points: optPts.join(" "), fill: "none", stroke: POS_LT, "stroke-width": 1.5, opacity: 0.5 }));
+    // guaranteed line, colored per-segment (blue above 0, red below 0)
+    appendSplitLine(svg, confirmed, x, y, 2);
 
-    // ----- potential line edge (faded) -----
-    svg.appendChild(e("polyline", {
-      points: topPts.join(" "),
-      fill: "none", stroke: "#8fb0ff", "stroke-width": 1.5,
-      opacity: 0.5,
-    }));
+    // ---- 0-line (solid, emphasized) ----
+    svg.appendChild(e("line", { x1: 0, y1: y0, x2: W, y2: y0, stroke: "#e6e8ec", "stroke-width": 1.5, opacity: 0.5 }));
 
-    // ----- guaranteed line edge (crisp) -----
-    svg.appendChild(e("polyline", {
-      points: botPts.join(" "),
-      fill: "none", stroke: "#cdd9ff", "stroke-width": 2,
-      "stroke-linejoin": "round", "stroke-linecap": "round",
-    }));
+    // ---- today marker ----
+    svg.appendChild(e("line", { x1: x(0), y1: padTop, x2: x(0), y2: H - padBottom, stroke: "#e6e8ec", "stroke-width": 1.5, opacity: 0.35 }));
 
-    // ----- today marker (index 0) -----
-    svg.appendChild(e("line", {
-      x1: x(0), y1: padTop, x2: x(0), y2: H - padBottom,
-      stroke: "#e6e8ec", "stroke-width": 1.5, opacity: 0.5,
-    }));
-
-    // ----- goal markers (vertical lines at each goal date) -----
-    (series.markers || []).forEach((mk) => {
+    // ---- goal markers ----
+    (projection.markers || []).forEach((mk) => {
       const i = mk.dateIndex;
       const g = e("g", { class: "goal-marker" });
-      g.appendChild(e("line", {
-        x1: x(i), y1: padTop - 6, x2: x(i), y2: H - padBottom,
-        stroke: mk.bought ? "#ffb020" : "#c792ff",
-        "stroke-width": 1.5, "stroke-dasharray": "4 3", opacity: 0.85,
-      }));
-      // flag at top
-      const flag = e("circle", {
-        cx: x(i), cy: padTop - 6, r: 5,
-        fill: mk.bought ? "#ffb020" : "#c792ff",
-        class: "goal-flag",
-      });
-      g.appendChild(flag);
-      if (onMarkerClick) {
-        g.style.cursor = "pointer";
-        g.addEventListener("click", (ev) => { ev.stopPropagation(); onMarkerClick(mk, ev.clientX, ev.clientY); });
-      }
+      g.appendChild(e("line", { x1: x(i), y1: padTop - 6, x2: x(i), y2: H - padBottom, stroke: mk.bought ? "#ffb020" : "#c792ff", "stroke-width": 1.5, "stroke-dasharray": "4 3", opacity: 0.85 }));
+      g.appendChild(e("circle", { cx: x(i), cy: padTop - 6, r: 5, fill: mk.bought ? "#ffb020" : "#c792ff", class: "goal-flag" }));
+      if (opts.onMarkerClick) { g.style.cursor = "pointer"; g.addEventListener("click", (ev) => { ev.stopPropagation(); opts.onMarkerClick(mk, ev.clientX, ev.clientY); }); }
       svg.appendChild(g);
     });
 
-    // ----- event dots -----
-    const colorFor = {
-      income: "#39d98a", expected: "#5b8cff",
-      expense: "#ff6b6b", goalbought: "#ffb020",
-    };
-    series.events.forEach((ev) => {
+    // ---- event dots (filtered to active currency unless ALL) ----
+    const colorFor = { income: "#39d98a", expected: POS, expense: NEG, goalbought: "#ffb020" };
+    (projection.events || []).forEach((ev) => {
+      if (!isAll && ev.currency !== filter) return;
       const i = ev.dateIndex;
       const isOpt = ev.type === "expected";
-      const cy = y(isOpt ? series.optimistic[i] : series.confirmed[i]);
-      const dot = e("circle", {
-        cx: x(i), cy: cy, r: 3.5,
-        fill: colorFor[ev.type] || "#8b93a1",
-        opacity: isOpt ? 0.55 : 1,
-        class: "event-dot",
-      });
+      const cy = y(isOpt ? optimistic[i] : confirmed[i]);
+      // in ALL view the active series is EUR-equiv; still place dots on the line
+      const dot = e("circle", { cx: x(i), cy: cy, r: 3.2, fill: colorFor[ev.type] || "#8b93a1", opacity: isOpt ? 0.5 : 0.9, class: "event-dot" });
       const title = e("title");
-      title.textContent = `${fmtDate(series.dates[i])} · ${ev.label} · ${ev.amount >= 0 ? "+" : ""}${fmtMoney(ev.amount)}`;
+      title.textContent = `${fmtDate(projection.dates[i])} · ${ev.label} · ${ev.amount >= 0 ? "+" : ""}${fmt(ev.amount, ev.currency)}`;
       dot.appendChild(title);
       svg.appendChild(dot);
     });
 
-    // scroll wrapper
-    const scroller = e2div("timeline-scroll");
-    // ----- hover crosshair (vertical line + two dots), hidden until hover -----
+    // ---- hover crosshair ----
     const cross = e("g", { class: "tl-cross", opacity: 0 });
-    const crossLine = e("line", {
-      x1: 0, y1: padTop, x2: 0, y2: H - padBottom,
-      stroke: "#e6e8ec", "stroke-width": 1, opacity: 0.6,
-    });
-    const dotOpt = e("circle", { r: 4, fill: "#8fb0ff", stroke: "#0f1115", "stroke-width": 1.5 });
-    const dotConf = e("circle", { r: 4.5, fill: "#cdd9ff", stroke: "#0f1115", "stroke-width": 1.5 });
-    cross.appendChild(crossLine);
-    cross.appendChild(dotOpt);
-    cross.appendChild(dotConf);
+    const crossLine = e("line", { x1: 0, y1: padTop, x2: 0, y2: H - padBottom, stroke: "#e6e8ec", "stroke-width": 1, opacity: 0.6 });
+    const dotC = e("circle", { r: 4.5, fill: "#cdd9ff", stroke: "#0f1115", "stroke-width": 1.5 });
+    cross.appendChild(crossLine); cross.appendChild(dotC);
     svg.appendChild(cross);
 
+    const scroller = e2div("timeline-scroll");
     scroller.appendChild(svg);
     container.appendChild(scroller);
 
-    // y-axis overlay (fixed, non-scrolling) with value labels
+    // y-axis overlay
     const yOverlay = e2div("timeline-yaxis");
     for (let t = yTicks; t >= 0; t--) {
       const val = lo + (hi - lo) * (t / yTicks);
       const lab = document.createElement("div");
       lab.className = "y-tick";
       lab.style.top = (y(val) - 7) + "px";
-      lab.textContent = shortMoney(val, fmtMoney);
+      lab.textContent = (symbols[activeCur] || "") + shortNum(val);
       yOverlay.appendChild(lab);
     }
     container.appendChild(yOverlay);
 
-    // ----- floating tooltip (follows cursor), fixed to the viewport box -----
+    // ---- tooltip ----
     const tip = e2div("tl-tip");
     tip.style.display = "none";
     container.appendChild(tip);
 
-    function hideHover() {
-      cross.setAttribute("opacity", 0);
-      tip.style.display = "none";
-    }
-
-    function showHoverAt(clientX, clientY) {
-      const svgRect = svg.getBoundingClientRect();
-      // position within the (scrolled) svg, in svg user units
-      const px = clientX - svgRect.left;
-      let i = Math.round((px - padLeft) / PX_PER_DAY);
-      if (i < 0) i = 0;
-      if (i > n - 1) i = n - 1;
-
+    function hideHover() { cross.setAttribute("opacity", 0); tip.style.display = "none"; }
+    function showHoverAt(clientX) {
+      const r = svg.getBoundingClientRect();
+      let i = Math.round((clientX - r.left - padLeft) / PX_PER_DAY);
+      i = Math.max(0, Math.min(n - 1, i));
       const cx = x(i);
-      const cyConf = y(series.confirmed[i]);
-      const cyOpt = y(series.optimistic[i]);
-      crossLine.setAttribute("x1", cx);
-      crossLine.setAttribute("x2", cx);
-      dotConf.setAttribute("cx", cx); dotConf.setAttribute("cy", cyConf);
-      dotOpt.setAttribute("cx", cx); dotOpt.setAttribute("cy", cyOpt);
+      crossLine.setAttribute("x1", cx); crossLine.setAttribute("x2", cx);
+      dotC.setAttribute("cx", cx); dotC.setAttribute("cy", y(confirmed[i]));
       cross.setAttribute("opacity", 1);
 
-      // tooltip content
-      const hasUpside = series.optimistic[i] - series.confirmed[i] > 0.005;
-      tip.innerHTML =
-        '<div class="tl-tip-date">' + escHtml(fmtDate(series.dates[i])) + '</div>' +
-        '<div class="tl-tip-row"><span class="sw sw-confirmed"></span>' +
-          '<span class="tl-tip-lbl">' + escHtml(L.guaranteed) + '</span>' +
-          '<span class="tl-tip-val">' + escHtml(fmtMoney(series.confirmed[i])) + '</span></div>' +
-        (hasUpside
-          ? '<div class="tl-tip-row"><span class="sw sw-optimistic"></span>' +
-            '<span class="tl-tip-lbl">' + escHtml(L.potential) + '</span>' +
-            '<span class="tl-tip-val">' + escHtml(fmtMoney(series.optimistic[i])) + '</span></div>'
-          : '');
+      // headline: active series value; breakdown: per-currency native
+      let rows = "";
+      if (isAll) {
+        rows += tipRow("sw-confirmed", L.guaranteed, fmt(confirmed[i], "EUR"));
+        if (optimistic[i] - confirmed[i] > 0.005) rows += tipRow("sw-optimistic", L.potential, fmt(optimistic[i], "EUR"));
+        rows += '<div class="tl-tip-div"></div>';
+        CURRENCIES.forEach((c) => {
+          const v = projection.byCur[c].confirmed[i];
+          if (Math.abs(v) > 0.005 || projection.byCur[c].start !== 0) rows += tipCur(symbols[c], fmt(v, c));
+        });
+      } else {
+        rows += tipRow("sw-confirmed", L.guaranteed, fmt(confirmed[i], filter));
+        if (optimistic[i] - confirmed[i] > 0.005) rows += tipRow("sw-optimistic", L.potential, fmt(optimistic[i], filter));
+      }
+      tip.innerHTML = '<div class="tl-tip-date">' + escHtml(fmtDate(projection.dates[i])) + '</div>' + rows;
 
-      // place tooltip relative to container, clamped to its width
-      const contRect = container.getBoundingClientRect();
+      const cr = container.getBoundingClientRect();
       tip.style.display = "block";
       const tw = tip.offsetWidth || 150;
-      let left = clientX - contRect.left + 12;
-      if (left + tw > contRect.width - 4) left = clientX - contRect.left - tw - 12;
+      let left = clientX - cr.left + 12;
+      if (left + tw > cr.width - 4) left = clientX - cr.left - tw - 12;
       if (left < 4) left = 4;
       tip.style.left = left + "px";
-      tip.style.top = "10px";
+      tip.style.top = "40px";
     }
+    function tipRow(sw, lbl, val) { return '<div class="tl-tip-row"><span class="sw ' + sw + '"></span><span class="tl-tip-lbl">' + escHtml(lbl) + '</span><span class="tl-tip-val">' + escHtml(val) + '</span></div>'; }
+    function tipCur(sym, val) { return '<div class="tl-tip-row tl-tip-cur"><span class="tl-tip-lbl">' + escHtml(sym) + '</span><span class="tl-tip-val">' + escHtml(val) + '</span></div>'; }
 
-    function onMove(ev) {
-      const pt = ev.touches ? ev.touches[0] : ev;
-      if (!pt) return;
-      showHoverAt(pt.clientX, pt.clientY);
-    }
-
+    function onMove(ev) { const pt = ev.touches ? ev.touches[0] : ev; if (pt) showHoverAt(pt.clientX); }
     svg.addEventListener("mousemove", onMove);
     svg.addEventListener("mouseleave", hideHover);
-    svg.addEventListener("touchstart", (ev) => { onMove(ev); }, { passive: true });
-    svg.addEventListener("touchmove", (ev) => { onMove(ev); }, { passive: true });
+    svg.addEventListener("touchstart", onMove, { passive: true });
+    svg.addEventListener("touchmove", onMove, { passive: true });
     svg.addEventListener("touchend", hideHover);
 
     return { svg, scroller };
   }
 
-  function escHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Fill between the 0-line and the curve, blue where curve>0, red where curve<0.
+  function appendSplitArea(svg, series, x, y, y0, n) {
+    // positive area
+    let posPath = "", open = false;
+    for (let i = 0; i < n; i++) {
+      const v = series[i];
+      if (v > 0) {
+        if (!open) { posPath += `M${x(i)},${y0} `; open = true; }
+        posPath += `L${x(i)},${y(v)} `;
+        if (i === n - 1 || series[i + 1] <= 0) { posPath += `L${x(i)},${y0} Z `; open = false; }
+      }
+    }
+    if (posPath) svg.appendChild(e("path", { d: posPath.trim(), fill: POS, opacity: 0.55 }));
+    // negative area
+    let negPath = ""; open = false;
+    for (let i = 0; i < n; i++) {
+      const v = series[i];
+      if (v < 0) {
+        if (!open) { negPath += `M${x(i)},${y0} `; open = true; }
+        negPath += `L${x(i)},${y(v)} `;
+        if (i === n - 1 || series[i + 1] >= 0) { negPath += `L${x(i)},${y0} Z `; open = false; }
+      }
+    }
+    if (negPath) svg.appendChild(e("path", { d: negPath.trim(), fill: NEG, opacity: 0.5 }));
   }
 
-  function e2div(cls) {
-    const d = document.createElement("div");
-    d.className = cls;
-    return d;
+  // Draw the guaranteed line colored blue above 0, red below 0.
+  function appendSplitLine(svg, series, x, y, w) {
+    const pts = series.map((v, i) => [x(i), y(v), v]);
+    let seg = [], segNeg = pts[0][2] < 0;
+    const flush = () => {
+      if (seg.length < 2) { seg = seg.slice(-1); return; }
+      svg.appendChild(e("polyline", { points: seg.map((p) => p[0] + "," + p[1]).join(" "), fill: "none", stroke: segNeg ? NEG : "#cdd9ff", "stroke-width": w, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      seg = seg.slice(-1);
+    };
+    for (let i = 0; i < pts.length; i++) {
+      const neg = pts[i][2] < 0;
+      if (i > 0 && neg !== segNeg) { seg.push(pts[i]); flush(); segNeg = neg; }
+      seg.push(pts[i]);
+    }
+    flush();
   }
 
   function monthLabel(iso, lang) {
     const d = new Date(iso + "T00:00:00");
     const locale = lang === "zh" ? "zh-CN" : "en-US";
-    // Jan shows year
-    if (d.getMonth() === 0) {
-      return d.toLocaleDateString(locale, { month: "short", year: "2-digit" });
-    }
+    if (d.getMonth() === 0) return d.toLocaleDateString(locale, { month: "short", year: "2-digit" });
     return d.toLocaleDateString(locale, { month: "short" });
   }
-
-  function shortMoney(v, fmtMoney) {
+  function shortNum(v) {
     const abs = Math.abs(v);
-    if (abs >= 1000) {
-      const k = v / 1000;
-      return (k % 1 === 0 ? k : k.toFixed(1)) + "k";
-    }
+    if (abs >= 1000) { const k = v / 1000; return (k % 1 === 0 ? k : k.toFixed(1)) + "k"; }
     return Math.round(v).toString();
   }
 
